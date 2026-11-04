@@ -1,0 +1,57 @@
+# Safety flows for a heater on a smart plug with power measurement: off after 5 hours on, and off when
+# the plug draws more than 2600 W for 2 minutes. Copy to config/flows/ and change the device ids to
+# your own. They start switched off.
+id: safety-heater
+name: Heater
+enabled: false
+nodes:
+  change: {type: trigger.state, device_id: zigbee:0x00158d0000000001, key: switch}
+  wait: {type: action.timer, minutes: 300}
+  off:
+    type: action.device
+    command: off
+    device_id: zigbee:0x00158d0000000001
+    key: switch
+  tell:
+    type: action.notify
+    title: Heating off
+    message: The heater was on for 5 hours straight and has been switched off.
+    priority: high
+  power: {type: trigger.state, device_id: zigbee:0x00158d0000000001, key: power}
+  over:
+    type: cond.state
+    op: gt
+    value: '2600'
+    device_id: zigbee:0x00158d0000000001
+    key: power
+  wait2: {type: action.timer, minutes: 2, restart: false}
+  off2:
+    type: action.device
+    command: off
+    device_id: zigbee:0x00158d0000000001
+    key: switch
+  tell2:
+    type: action.notify
+    title: Heating off
+    message: The plug drew more than 2600 W. The heater has been switched off.
+    priority: urgent
+edges:
+  - {from: change, out: on, to: wait, in: start}
+  - {from: change, out: off, to: wait, in: stop}
+  - {from: wait, to: off}
+  - {from: off, to: tell}
+  - {from: power, to: over}
+  - {from: over, out: yes, to: wait2, in: start}
+  - {from: over, out: no, to: wait2, in: stop}
+  - {from: wait2, to: off2}
+  - {from: off2, to: tell2}
+layout:
+  change: [0, 0]
+  wait: [360, -20]
+  off: [720, -20]
+  tell: [1080, -20]
+  power: [0, 280]
+  over: [360, 280]
+  wait2: [720, 260]
+  off2: [1080, 260]
+  tell2: [1440, 260]

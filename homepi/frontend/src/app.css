@@ -1,0 +1,327 @@
+@import 'tailwindcss';
+@plugin 'daisyui' {
+	themes: false;
+}
+
+@plugin 'daisyui/theme' {
+	name: 'homepi-dark';
+	default: false;
+	prefersdark: true;
+	color-scheme: dark;
+	--color-base-100: oklch(23% 0.025 272);
+	--color-base-200: oklch(19% 0.025 272);
+	--color-base-300: oklch(15% 0.025 272);
+	--color-base-content: oklch(94% 0.01 272);
+	--color-primary: oklch(72% 0.17 280);
+	--color-primary-content: oklch(18% 0.04 280);
+	--color-secondary: oklch(75% 0.14 200);
+	--color-secondary-content: oklch(18% 0.03 200);
+	--color-accent: oklch(82% 0.16 80);
+	--color-accent-content: oklch(25% 0.05 80);
+	--color-neutral: oklch(30% 0.03 272);
+	--color-neutral-content: oklch(92% 0.01 272);
+	--color-info: oklch(75% 0.13 230);
+	--color-success: oklch(76% 0.17 155);
+	--color-warning: oklch(82% 0.16 80);
+	--color-error: oklch(70% 0.19 20);
+	--radius-selector: 1rem;
+	--radius-field: 0.75rem;
+	--radius-box: 1.25rem;
+	--border: 1px;
+}
+
+@plugin 'daisyui/theme' {
+	name: 'homepi-light';
+	default: true;
+	color-scheme: light;
+	--color-base-100: oklch(100% 0 0);
+	--color-base-200: oklch(96.5% 0.008 272);
+	--color-base-300: oklch(92% 0.014 272);
+	--color-base-content: oklch(24% 0.03 272);
+	--color-primary: oklch(55% 0.22 281);
+	--color-primary-content: oklch(98% 0.01 281);
+	--color-secondary: oklch(60% 0.14 215);
+	--color-secondary-content: oklch(98% 0.01 215);
+	--color-accent: oklch(78% 0.17 75);
+	--color-accent-content: oklch(28% 0.06 75);
+	--color-neutral: oklch(30% 0.03 272);
+	--color-neutral-content: oklch(96% 0.01 272);
+	--color-info: oklch(62% 0.15 235);
+	--color-success: oklch(65% 0.17 155);
+	--color-warning: oklch(78% 0.17 75);
+	--color-error: oklch(60% 0.21 22);
+	--radius-selector: 1rem;
+	--radius-field: 0.75rem;
+	--radius-box: 1.25rem;
+	--border: 1px;
+}
+
+body {
+	background:
+		radial-gradient(60rem 30rem at 10% -10%, color-mix(in oklab, var(--color-primary) 14%, transparent), transparent 70%),
+		radial-gradient(50rem 30rem at 100% 0%, color-mix(in oklab, var(--color-secondary) 10%, transparent), transparent 70%),
+		var(--color-base-200);
+	background-attachment: fixed;
+}
+
+/* Device tiles */
+.tile {
+	position: relative;
+	/* Its own stacking context: the z-10 on a card's toggles and buttons (to sit above the card-wide link) must
+	   stay inside the card, or they scroll over the sticky header and the bottom bar. */
+	isolation: isolate;
+	border-radius: var(--radius-box);
+	background: var(--color-base-100);
+	border: 1px solid color-mix(in oklab, var(--color-base-content) 8%, transparent);
+	box-shadow: 0 1px 2px color-mix(in oklab, black 8%, transparent);
+	transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.2s ease;
+}
+.tile:hover {
+	transform: translateY(-2px);
+	border-color: color-mix(in oklab, var(--color-primary) 40%, transparent);
+	box-shadow: 0 8px 24px color-mix(in oklab, var(--color-primary) 14%, transparent);
+}
+.tile.is-on {
+	background: linear-gradient(
+		145deg,
+		color-mix(in oklab, var(--color-accent) 22%, var(--color-base-100)),
+		var(--color-base-100) 75%
+	);
+	border-color: color-mix(in oklab, var(--color-accent) 45%, transparent);
+}
+.tile.is-dragging {
+	opacity: 0.4;
+	transform: scale(0.97);
+}
+.tile.is-over {
+	outline: 2px dashed var(--color-primary);
+	outline-offset: 3px;
+}
+.tile:focus-visible,
+.tile-main:focus-visible {
+	outline: 2px solid var(--color-primary);
+	outline-offset: 2px;
+}
+
+.icon-bubble {
+	display: grid;
+	place-items: center;
+	width: 2.5rem;
+	height: 2.5rem;
+	border-radius: 0.9rem;
+	background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+	flex-shrink: 0;
+	transition: background 0.2s ease, color 0.2s ease;
+}
+.is-on .icon-bubble {
+	background: var(--color-accent);
+	color: var(--color-accent-content);
+	box-shadow: 0 0 18px color-mix(in oklab, var(--color-accent) 60%, transparent);
+}
+
+.nav-link {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	padding: 0.6rem 0.9rem;
+	border-radius: var(--radius-field);
+	font-weight: 500;
+	color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+	transition: background 0.15s ease, color 0.15s ease;
+}
+.nav-link:hover {
+	background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+	color: var(--color-base-content);
+}
+.nav-link.active {
+	background: color-mix(in oklab, var(--color-primary) 18%, transparent);
+	color: var(--color-primary);
+}
+
+.sheet-box {
+	max-height: 92dvh;
+}
+@media (min-width: 640px) {
+	.sheet-box {
+		height: 100dvh;
+		max-height: 100dvh;
+		width: 28rem;
+		border-radius: var(--radius-box) 0 0 var(--radius-box);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.tile,
+	.icon-bubble {
+		transition: none;
+	}
+	.tile:hover {
+		transform: none;
+	}
+}
+
+/* Tailwind v4 resets buttons to the default cursor; anything clickable should show a pointer. */
+a[href],
+button:not(:disabled),
+[role='button']:not([aria-disabled='true']),
+summary,
+select:not(:disabled),
+label:has(input[type='checkbox']:not(:disabled)),
+label:has(input[type='radio']:not(:disabled)),
+input[type='checkbox']:not(:disabled),
+input[type='radio']:not(:disabled),
+input[type='range']:not(:disabled),
+.btn:not(:disabled):not(.btn-disabled),
+.tile-main:not(:disabled) {
+	cursor: pointer;
+}
+button:disabled,
+.btn:disabled {
+	cursor: not-allowed;
+}
+/* Edit mode: tiles are dragged, not clicked. */
+.tile.cursor-grab {
+	cursor: grab;
+}
+
+/* Automation canvas. Every wire has its own colour, like real wires, so a line is easy to follow where it
+   crosses another. Energy pulses run along a wire whose output is true right now, faster just after a message
+   went along it; moving dashes while a timer is counting down. The selectors
+   are doubled up so they beat the canvas library's own (grey) styles. */
+:root {
+	--flow-line: oklch(64% 0.16 245);
+	--flow-active: oklch(70% 0.19 150);
+	--flow-wait: oklch(72% 0.17 55);
+	--wire-0: oklch(68% 0.17 245);
+	--wire-1: oklch(66% 0.22 25);
+	--wire-2: oklch(72% 0.18 150);
+	--wire-3: oklch(66% 0.2 305);
+	--wire-4: oklch(76% 0.16 65);
+	--wire-5: oklch(74% 0.12 195);
+	--wire-6: oklch(70% 0.2 355);
+	--wire-7: oklch(86% 0.16 100);
+}
+.svelte-flow.svelte-flow {
+	--xy-edge-stroke-default: var(--flow-line);
+	--xy-edge-stroke-width-default: 3;
+	--xy-edge-stroke-selected-default: var(--color-primary);
+	--xy-connectionline-stroke-default: var(--flow-line);
+	--xy-connectionline-stroke-width-default: 3;
+}
+.svelte-flow .svelte-flow__edge .svelte-flow__edge-path {
+	stroke: var(--w, var(--flow-line));
+	stroke-width: 3;
+	transition: stroke 0.3s;
+}
+.svelte-flow .svelte-flow__edge.wire-0 { --w: var(--wire-0); }
+.svelte-flow .svelte-flow__edge.wire-1 { --w: var(--wire-1); }
+.svelte-flow .svelte-flow__edge.wire-2 { --w: var(--wire-2); }
+.svelte-flow .svelte-flow__edge.wire-3 { --w: var(--wire-3); }
+.svelte-flow .svelte-flow__edge.wire-4 { --w: var(--wire-4); }
+.svelte-flow .svelte-flow__edge.wire-5 { --w: var(--wire-5); }
+.svelte-flow .svelte-flow__edge.wire-6 { --w: var(--wire-6); }
+.svelte-flow .svelte-flow__edge.wire-7 { --w: var(--wire-7); }
+.svelte-flow .svelte-flow__edge.waiting .svelte-flow__edge-path {
+	stroke-dasharray: 8 6;
+	animation: flow-move 1s linear infinite;
+	opacity: 0.8;
+}
+.svelte-flow .svelte-flow__edge.selected .svelte-flow__edge-path,
+.svelte-flow .svelte-flow__edge:hover .svelte-flow__edge-path {
+	stroke-width: 5;
+}
+/* A selected wire keeps its own colour (the canvas library would make it grey), thicker and glowing. */
+.svelte-flow .svelte-flow__edge {
+	--xy-edge-stroke-selected: var(--w, var(--flow-line));
+}
+/* Selected, and also focused: a tap focuses the wire, and the library paints focused wires grey with the same
+   weight as a selected one, so this has to win by force. */
+.svelte-flow .svelte-flow__edge.selected .svelte-flow__edge-path,
+.svelte-flow .svelte-flow__edge:focus .svelte-flow__edge-path,
+.svelte-flow .svelte-flow__edge:focus-visible .svelte-flow__edge-path {
+	stroke: var(--w, var(--flow-line)) !important;
+	stroke-width: 5;
+	filter: drop-shadow(0 0 5px var(--w, var(--flow-line)));
+}
+/* Hovering a wire greys out all the others, so it is easy to follow where it goes (mouse only: on a phone
+   "hover" would stay on the last tapped wire). */
+@media (hover: hover) {
+	.svelte-flow:has(.svelte-flow__edge:hover) .svelte-flow__edge:not(:hover):not(.selected) .svelte-flow__edge-path {
+		stroke: var(--color-base-content) !important;
+		opacity: 0.15 !important;
+		filter: none;
+		transition: opacity 0.15s;
+	}
+	.svelte-flow:has(.svelte-flow__edge:hover) .svelte-flow__edge:not(:hover):not(.selected) .wire-energy {
+		opacity: 0 !important;
+	}
+}
+/* Energy flowing through a wire: short bright pulses run towards the target. Slow while the output is true right
+   now, fast and brighter just after a message went along. */
+.svelte-flow .svelte-flow__edge .wire-energy {
+	stroke: color-mix(in oklab, var(--w, var(--flow-line)) 35%, white);
+	stroke-width: 3;
+	stroke-linecap: round;
+	stroke-dasharray: 10 40;
+	opacity: 0;
+	pointer-events: none;
+}
+.svelte-flow .svelte-flow__edge.active .wire-energy {
+	opacity: 0.9;
+	animation: flow-energy 1.6s linear infinite;
+}
+.svelte-flow .svelte-flow__edge.fired .wire-energy {
+	opacity: 1;
+	stroke-width: 4;
+	stroke-dasharray: 16 24;
+	animation: flow-energy 0.5s linear infinite;
+}
+@keyframes flow-energy {
+	to {
+		stroke-dashoffset: -50;
+	}
+}
+@keyframes flow-move {
+	to {
+		stroke-dashoffset: -14;
+	}
+}
+/* Connection dots: big enough to see, with an even bigger invisible area around them to grab.
+   Doubled selector so it beats the canvas library's tiny default. */
+.svelte-flow .svelte-flow__handle {
+	width: 20px;
+	height: 20px;
+	min-width: 20px;
+	min-height: 20px;
+	background: color-mix(in oklab, var(--color-base-content) 75%, transparent);
+	border: 3px solid var(--color-base-100);
+	box-shadow: 0 0 0 1px color-mix(in oklab, currentColor 25%, transparent);
+	transition: transform 0.1s;
+}
+.svelte-flow .svelte-flow__handle::after {
+	content: '';
+	position: absolute;
+	inset: -14px;
+	border-radius: 9999px;
+}
+.svelte-flow .svelte-flow__handle:hover,
+.svelte-flow .svelte-flow__handle.connectingto {
+	transform: translate(var(--handle-x, 50%), -50%) scale(1.3);
+	cursor: crosshair;
+}
+.svelte-flow .svelte-flow__handle-left:hover,
+.svelte-flow .svelte-flow__handle-left.connectingto {
+	--handle-x: -50%;
+}
+/* Fingers are fatter than mice: bigger connection dots and a larger grab area on touch screens. */
+@media (pointer: coarse) {
+	.svelte-flow .svelte-flow__handle {
+		width: 26px;
+		height: 26px;
+		min-width: 26px;
+		min-height: 26px;
+	}
+	.svelte-flow .svelte-flow__handle::after {
+		inset: -20px;
+	}
+}

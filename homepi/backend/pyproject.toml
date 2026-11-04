@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "noodle-hub"
+dynamic = ["version"]
+description = "Noodle: one place to see and control your smart home (Zigbee, Matter, Hue, Bluetooth) with automations you can edit as files."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.115.6",
+    "uvicorn==0.32.1",
+    "itsdangerous==2.2.0",
+    "aiomqtt==2.3.0",
+    "websockets==13.1",
+    "httpx==0.28.1",
+    "pychromecast==14.0.5",
+    "bleak==0.22.3",
+    "ruamel.yaml==0.19.1",
+    "tzdata==2025.2",
+]
+
+[project.scripts]
+noodle = "homepi.__main__:cli"
+
+[tool.setuptools.dynamic]
+version = { attr = "homepi.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["homepi*"]
+
+[tool.setuptools.package-data]
+# The web interface, copied here by build-wheel.sh before building.
+homepi = ["static/**/*"]

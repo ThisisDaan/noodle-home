@@ -1,0 +1,45 @@
+# Safety flows for an electric blanket on a smart plug: a wheel long press toggles it, and it switches
+# itself off after 2 hours. Copy to your config/flows/ folder and change the device ids (see
+# GET /api/devices) to your own. They start switched off.
+id: safety-blanket
+name: Blanket
+enabled: false
+nodes:
+  press:
+    type: trigger.event
+    device_id: matter:2
+    keys:
+      - button_3
+      - button_6
+      - button_9
+    action: long_press
+  toggle:
+    type: action.device
+    command: toggle
+    device_id: matter:1
+    key: switch_1
+  change: {type: trigger.state, device_id: matter:1, key: switch_1}
+  wait: {type: action.timer, minutes: 120}
+  off:
+    type: action.device
+    command: off
+    device_id: matter:1
+    key: switch_1
+  tell:
+    type: action.notify
+    title: Blanket off
+    message: The blanket was on for 2 hours and has been switched off.
+    priority: default
+edges:
+  - {from: press, to: toggle}
+  - {from: change, out: on, to: wait, in: start}
+  - {from: change, out: off, to: wait, in: stop}
+  - {from: wait, to: off}
+  - {from: off, to: tell}
+layout:
+  press: [0, 0]
+  toggle: [400, 0]
+  change: [0, 280]
+  wait: [360, 260]
+  off: [720, 260]
+  tell: [1080, 260]

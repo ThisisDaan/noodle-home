@@ -1,0 +1,21 @@
+# Just the Noodle hub, nothing else. Run from this folder:   docker compose up -d --build
+# Then open http://<this machine>:8090 and follow the setup wizard.
+#
+# It needs the host network (Linux) to find devices on your network and to use Bluetooth.
+# Your settings, flows and database live in ./data (flows are YAML files in ./data/config/flows).
+services:
+  noodle:
+    build: .
+    container_name: noodle
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-UTC}              # your time zone, e.g. Europe/Amsterdam (also settable in the app)
+    volumes:
+      - ./data:/data
+      - /etc/localtime:/etc/localtime:ro
+      # Optional: Bluetooth sensors (needs BlueZ on the host).
+      - /run/dbus:/run/dbus:ro
+      # Optional: shows your Docker containers on the System page and lets you restart them. Remove if you
+      # do not want that (the rest works without it).
+      - /var/run/docker.sock:/var/run/docker.sock

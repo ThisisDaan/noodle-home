@@ -1,0 +1,22 @@
+# Runs the Noodle hub as a service on a Linux machine (after `pip install` of the wheel, see the README).
+# Install:  sudo cp noodle.service /etc/systemd/system/ && sudo nano /etc/systemd/system/noodle.service
+#           (set User and the paths) then: sudo systemctl enable --now noodle
+[Unit]
+Description=Noodle smart home hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=noodle
+# Where your data and settings go (database, config/flows/*.yaml, config/settings.yaml ...)
+Environment=HOMEPI_DATA=/var/lib/noodle
+# Port 80 as well as 8090 needs root or this line; remove the next two lines to serve only on 8090.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+Environment=HOMEPI_EXTRA_PORT=80
+ExecStart=/opt/noodle/venv/bin/noodle
+Restart=on-failure
+RestartSec=5
+StateDirectory=noodle
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,23 @@
+.env
+data/
+backups/
+ha.env
+homepi/frontend/node_modules/
+homepi/frontend/build/
+homepi/frontend/.svelte-kit/
+__pycache__/
+homepi/backend/homepi/static/
+homepi/backend/build/
+homepi/backend/dist/
+homepi/backend/*.egg-info/
+
+# Android / Python caches
+noodle-android/Noodle.apk
+noodle-android/local.properties
+noodle-android/.gradle/
+noodle-android/.kotlin/
+noodle-android/**/build/
+.pytest_cache/
+*.pyc
+.claude/
+.venv/

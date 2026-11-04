@@ -1,0 +1,162 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./data/mosquitto:/mosquitto/data
+    restart: unless-stopped
+
+  zigbee2mqtt:
+    image: koenkk/zigbee2mqtt:2.7.1
+    container_name: zigbee2mqtt
+    depends_on:
+      - mosquitto
+    environment:
+      - TZ=${TZ}
+    ports:
+      - "8081:8080"   # web UI (8080 is kept free for the UniFi inform port)
+    volumes:
+      - ./data/zigbee2mqtt:/app/data
+      - /run/udev:/run/udev:ro
+    devices:
+      - ${ZIGBEE_DEVICE}:/dev/ttyUSB0
+    restart: unless-stopped
+
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ./data/homeassistant:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+    network_mode: host
+    privileged: true
+    restart: unless-stopped
+
+  # Thread border router for the MG24 stick (needs OpenThread RCP firmware, see README).
+  # REST API on 8082 because 8081 is taken by the Zigbee2MQTT UI.
+  otbr:
+    image: ghcr.io/ownbee/hass-otbr-docker:latest
+    container_name: otbr
+    environment:
+      - DEVICE=/dev/ttyOTBR
+      - BAUDRATE=460800
+      - FLOW_CONTROL=0   # the Sonoff MG24 stick has no RTS/CTS lines
+      - AUTOFLASH_FIRMWARE=0
+      - BACKBONE_IF=${THREAD_BACKBONE_IF}
+      - FIREWALL=1
+      - NAT64=1
+      - OTBR_REST_PORT=8082
+      - OTBR_WEB_PORT=7586
+    devices:
+      - ${THREAD_DEVICE}:/dev/ttyOTBR
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - ./data/otbr:/data
+    network_mode: host
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    restart: unless-stopped
+
+  # Most Thread devices are Matter devices; Home Assistant's Matter integration talks to this.
+  matter-server:
+    image: ghcr.io/home-assistant-libs/python-matter-server:stable
+    container_name: matter-server
+    # --bluetooth-adapter 0: homepi pairs new Matter devices over the Pi's Bluetooth (hci0).
+    command: --storage-path /data --paa-root-cert-dir /data/credentials --primary-interface ${THREAD_BACKBONE_IF} --bluetooth-adapter 0
+    volumes:
+      - ./data/matter-server:/data
+      - /run/dbus:/run/dbus:ro
+    network_mode: host
+    privileged: true
+    security_opt:
+      - apparmor:unconfined
+    restart: unless-stopped
+
+  # homepi: web interface and API for Zigbee, Matter, Thread and the containers.
+  # http://noodle.local (port 80) or http://<pi-ip>:8090. The Docker socket lets it show, restart and read logs of containers.
+  homepi:
+    build: ./homepi
+    container_name: homepi
+    environment:
+      - NTFY_TOPIC=${NTFY_TOPIC:-}
+      - BLE_SENSORS=${BLE_SENSORS:-}
+      - HOMEPI_URL=${HOMEPI_URL:-http://192.168.1.104}
+      - TZ=${TZ}
+    depends_on:
+      - mosquitto
+      - matter-server
+    volumes:
+      - ./data/homepi:/data
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro   # Bluetooth (BlueZ) for the Xiaomi room sensor
+      - /var/run/docker.sock:/var/run/docker.sock
+    network_mode: host
+    restart: unless-stopped
+
+  # Forwards Matter button events to MQTT with their real press counts
+  # (Home Assistant drops spins above 8 clicks on the BILRESA wheel).
+  matter2mqtt:
+    build: ./matter2mqtt
+    container_name: matter2mqtt
+    depends_on:
+      - mosquitto
+      - matter-server
+    network_mode: host
+    restart: unless-stopped
+
+  # UniFi controller. Not started by default:
+  #   docker compose --profile unifi up -d
+  # Pinned to mongo 4.4.18: newer 4.4.x builds need a CPU newer than the Pi 4's.
+  unifi-db:
+    image: mongo:4.4.18
+    container_name: unifi-db
+    profiles: ["unifi"]
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=${UNIFI_DB_ROOT_PASSWORD}
+      - MONGO_USER=unifi
+      - MONGO_PASS=${UNIFI_DB_PASSWORD}
+      - MONGO_DBNAME=unifi
+      - MONGO_AUTHSOURCE=admin
+    volumes:
+      - ./data/unifi-db:/data/db
+      - ./unifi/init-mongo.sh:/docker-entrypoint-initdb.d/init-mongo.sh:ro
+    restart: unless-stopped
+
+  unifi:
+    image: lscr.io/linuxserver/unifi-network-application:latest
+    container_name: unifi
+    profiles: ["unifi"]
+    depends_on:
+      - unifi-db
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ}
+      - MONGO_USER=unifi
+      - MONGO_PASS=${UNIFI_DB_PASSWORD}
+      - MONGO_HOST=unifi-db
+      - MONGO_PORT=27017
+      - MONGO_DBNAME=unifi
+      - MONGO_AUTHSOURCE=admin
+      - MEM_LIMIT=1024
+      - MEM_STARTUP=1024
+    ports:
+      - "8443:8443"        # web UI
+      - "8080:8080"        # device inform
+      - "3478:3478/udp"    # STUN
+      - "10001:10001/udp"  # device discovery
+      - "8843:8843"        # guest portal (https)
+      - "8880:8880"        # guest portal (http)
+      - "6789:6789"        # mobile speed test
+    volumes:
+      - ./data/unifi:/config
+    restart: unless-stopped
