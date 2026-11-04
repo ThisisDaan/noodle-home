@@ -78,7 +78,9 @@ THERMOSTAT_NAME = "Thermostat"
 THERMOSTAT_SENSOR_DEVICE = THERMOSTAT_SENSOR_KEY = THERMOSTAT_HEATER_DEVICE = THERMOSTAT_HEATER_KEY = ""
 
 # Room names used to guess a device's area from its name ("Keuken Lamp" -> Keuken).
-# LIFX bulbs are found by broadcast; list addresses here for bulbs on another network.
+# LIFX: the bulbs the user added (address by hardware id), and extra addresses to search when a broadcast
+# does not reach them. Nothing searches except when the user presses Search.
+LIFX_BULBS = dict(item.split("=", 1) for item in os.environ.get("LIFX_BULBS", "").split(",") if "=" in item)
 LIFX_HOSTS: list[str] = [h.strip() for h in os.environ.get("LIFX_HOSTS", "").split(",") if h.strip()]
 DEFAULT_AREAS = ["Living room", "Kitchen", "Bedroom", "Bathroom", "Hallway", "Garden"]
 
@@ -108,7 +110,7 @@ SETTINGS: dict[str, tuple[str, str, str | None]] = {
     "thermostat_sensor_key": ("THERMOSTAT_SENSOR_KEY", "str", "thermostat"),
     "thermostat_heater_device": ("THERMOSTAT_HEATER_DEVICE", "str", "thermostat"),
     "thermostat_heater_key": ("THERMOSTAT_HEATER_KEY", "str", "thermostat"),
-    "lifx_hosts": ("LIFX_HOSTS", "list", "lifx"),
+    "lifx_hosts": ("LIFX_HOSTS", "list", "lifx"), "lifx_bulbs": ("LIFX_BULBS", "pairs", "lifx"),
     "ble_sensors": ("BLE_SENSORS", "pairs", "ble"), "integrations": ("INTEGRATIONS", "list", None),
 }
 SECRET_KEYS = {"hue_key", "ntfy_topic"}  # kept in secrets.yaml, not in settings.yaml

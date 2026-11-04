@@ -1,5 +1,18 @@
 export type Field = { key: string; label: string; placeholder: string; secret: boolean; value: string; set: boolean | null };
 export type Sensor = { address: string; name: string; model: string | null; available: boolean };
+export type Bulb = { mac: string; name: string; address: string; available: boolean };
+
+/** One thing a search found (backend discovery.py). */
+export type Found = { key: string; name: string; detail?: string; added: boolean };
+/** A search for new devices: it runs only when the user starts it, and the server pushes what it finds. */
+export type SearchState = {
+	searching: boolean;
+	/** Seconds left when the server sent this, and the length of the whole search. */
+	remaining: number;
+	total: number;
+	found: Found[];
+	error: string | null;
+};
 
 /** One entry of the Integrations page, as the server describes it (see backend integrations.py). */
 export type Integration = {
@@ -17,6 +30,9 @@ export type Integration = {
 	fields: Field[];
 	// Details some integrations add (Bluetooth)
 	sensors?: Sensor[];
+	bulbs?: Bulb[];
+	searchable?: boolean;
+	search?: SearchState;
 	error?: string | null;
 	// Details of This hub (location panel)
 	location_set?: boolean;

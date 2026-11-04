@@ -80,6 +80,7 @@ class Plugin:
     order: int = 100  # position on the page; lower comes first
     adapter_class: type | None = None
     source: str | None = None  # the adapter's `source`; None when there is no adapter
+    searchable: bool = False  # the page has a Search button; see search() and add_found(), and discovery.py
 
     def create_adapter(self, hub) -> Any:
         """The adapter that talks to the service (None if the plugin only has settings)."""
@@ -96,6 +97,15 @@ class Plugin:
     def details(self, adapter) -> dict:
         """More to show on the page next to the settings."""
         return {}
+
+    async def search(self, adapter, seconds: float, found) -> None:
+        """Look for new devices for `seconds`, only when the user asked. Call found(key, name=..., detail=...)
+        for each one. Nothing should look for devices outside of this."""
+        raise NotImplementedError
+
+    async def add_found(self, adapter, key: str) -> None:
+        """The user added one of the things search() found."""
+        raise NotImplementedError
 
     def on_remove(self, hub, adapter) -> None:
         """Called when the user removes the integration, after its `forget` keys are cleared."""

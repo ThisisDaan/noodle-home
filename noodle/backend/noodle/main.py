@@ -18,6 +18,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from . import aicontext, config, flowfiles, integrations, notify, plugins
 from .flows import FlowEngine
+from .discovery import Discovery
 from .migrations import adopt_hue_buttons
 from .hub import Hub
 from .store import Store
@@ -34,6 +35,7 @@ zigbee, matter, hue, phone, groups = (ADAPTERS[s] for s in ("zigbee", "matter", 
 for adapter in ADAPTERS.values():
     hub.register(adapter)
 flows = FlowEngine(hub, store)
+discovery = Discovery(hub)
 adopt_hue_buttons(flows)
 # Forwarded presses: Hue switch buttons, or else a phone notification button.
 zigbee.on_hook = lambda name: hue.press(name) or flows.webhook(name)
@@ -658,7 +660,10 @@ def _integration(integration_id: str) -> integrations.Integration:
 
 def _describe(item: integrations.Integration) -> dict:
     plugin = _plugin(item.id)
-    return integrations.describe(item, plugin, ADAPTERS.get(plugin.source))
+    data = integrations.describe(item, plugin, ADAPTERS.get(plugin.source))
+    if plugin.searchable:
+        data["searchable"], data["search"] = True, discovery.state(item.id)
+    return data
 
 
 @app.get("/api/integrations", dependencies=[Depends(require_login)])
@@ -719,6 +724,40 @@ async def remove_integration(integration_id: str) -> dict:
     if item.adapter and not item.gated:
         await restart_adapter(item.adapter)
     return _describe(item)
+
+
+def _searchable(integration_id: str):
+    plugin = _plugin(integration_id)
+    adapter = ADAPTERS.get(plugin.source)
+    if not plugin.searchable or adapter is None:
+        raise HTTPException(404, "This integration has nothing to search for")
+    if integration_id not in integrations.added_ids():
+        raise HTTPException(400, "Add the integration first")
+    return plugin, adapter
+
+
+@app.post("/api/integrations/{integration_id}/search", dependencies=[Depends(require_login)])
+async def start_search(integration_id: str) -> dict:
+    """Look for new devices for half a minute. The progress is pushed over /api/ws."""
+    plugin, adapter = _searchable(integration_id)
+    return discovery.start(integration_id, lambda seconds, found: plugin.search(adapter, seconds, found))
+
+
+@app.delete("/api/integrations/{integration_id}/search", dependencies=[Depends(require_login)])
+async def stop_search(integration_id: str) -> dict:
+    _searchable(integration_id)
+    return discovery.stop(integration_id)
+
+
+@app.post("/api/integrations/{integration_id}/found/{key}/add", dependencies=[Depends(require_login)])
+async def add_found(integration_id: str, key: str) -> dict:
+    plugin, adapter = _searchable(integration_id)
+    try:
+        await plugin.add_found(adapter, key)
+    except (KeyError, ValueError) as err:
+        raise HTTPException(400, str(err.args[0]) if err.args else "Could not add that")
+    discovery.mark_added(integration_id, key)
+    return _describe(_integration(integration_id))
 
 
 # Each plugin brings its own endpoints (pairing, discovery, ...).

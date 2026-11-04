@@ -54,7 +54,7 @@ def adapter_with_bulb(tmp_path):
     adapter._protocol = lifx._Protocol(lambda *a: None)
     adapter._protocol.transport = Capture()
     adapter.running = True
-    adapter._packet(service_packet(), ("192.168.1.50", 56700))
+    adapter.bulbs[f"lifx:{MAC}"] = lifx.Bulb(MAC, ("192.168.1.50", 56700))  # one the user added earlier
     adapter._packet(state_packet(), ("192.168.1.50", 56700))
     return hub, adapter
 
@@ -110,3 +110,53 @@ def test_unreachable_and_gone(tmp_path):
     adapter.running = False
     with pytest.raises(RuntimeError):
         asyncio.run(hub.command(f"lifx:{MAC}", "light", on=True))
+
+
+def test_nothing_is_noticed_unless_a_search_is_running(tmp_path):
+    hub, adapter = adapter_with_bulb(tmp_path)
+    other = bytes.fromhex("d073d5aabbcc") + b"\0\0"
+    packet = lifx.build(lifx.STATE_SERVICE, struct.pack("<BI", 1, 56700), source=1, target=other)
+    adapter._packet(packet, ("192.168.1.60", 56700))
+    assert adapter.nearby == {} and len(adapter.bulbs) == 1
+
+
+def test_a_search_lists_new_bulbs_and_adding_keeps_them(tmp_path, monkeypatch):
+    hub, adapter = adapter_with_bulb(tmp_path)
+    saved = []
+    monkeypatch.setattr(lifx.config, "save", lambda values: saved.append(values))
+    seen = {}
+    adapter._found = lambda key, **info: seen.setdefault(key, {}).update(info)
+    new_mac = "d073d5aabbcc"
+    target = bytes.fromhex(new_mac) + b"\0\0"
+    adapter._packet(lifx.build(lifx.STATE_SERVICE, struct.pack("<BI", 1, 56700), source=1, target=target),
+                    ("192.168.1.60", 56700))
+    assert seen[new_mac]["detail"] == "192.168.1.60" and f"lifx:{new_mac}" not in hub.devices
+    payload = struct.pack("<HHHHhH", 0, 0, FULL, 3500, 0, FULL) + b"Hall".ljust(32, b"\0") + b"\0" * 8
+    adapter._packet(lifx.build(lifx.LIGHT_STATE, payload, source=1, target=target), ("192.168.1.60", 56700))
+    assert seen[new_mac]["name"] == "Hall"
+    adapter._found = None
+    adapter.add_bulb(new_mac)
+    assert saved[-1] == {"lifx_bulbs": {new_mac: "192.168.1.60"}} and hub.devices[f"lifx:{new_mac}"].name == "Hall"
+    with pytest.raises(KeyError):
+        adapter.add_bulb(new_mac)
+
+
+def test_search_broadcasts_only_while_it_runs(tmp_path, monkeypatch):
+    hub, adapter = adapter_with_bulb(tmp_path)
+    monkeypatch.setattr(lifx, "SEARCH_PACKET_EVERY", 0.01)
+    adapter._protocol.transport.sent.clear()
+    asyncio.run(adapter.search(0.05, lambda *a, **k: None))
+    sent = len(adapter._protocol.transport.sent)
+    assert sent >= 2 and all(p[0][0] == lifx.GET_SERVICE for p in adapter._protocol.transport.sent)
+    assert adapter._found is None
+    asyncio.run(asyncio.sleep(0.05))
+    assert len(adapter._protocol.transport.sent) == sent  # nothing more once the search is over
+
+
+def test_a_moved_bulb_keeps_working(tmp_path, monkeypatch):
+    hub, adapter = adapter_with_bulb(tmp_path)
+    saved = []
+    monkeypatch.setattr(lifx.config, "save", lambda values: saved.append(values))
+    adapter._packet(service_packet(), ("192.168.1.77", 56700))
+    assert adapter.bulbs[f"lifx:{MAC}"].addr == ("192.168.1.77", 56700)
+    assert saved[-1] == {"lifx_bulbs": {MAC: "192.168.1.77"}}

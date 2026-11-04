@@ -1,5 +1,6 @@
 import type { Device } from './api';
 import { applyActivity, type FlowMessage } from './flow/activity.svelte.ts';
+import type { SearchState } from './integrations/types.ts';
 import { layout, type SavedLayout } from './layout.svelte.ts';
 
 export type FlowSummary = { id: string; name: string; enabled: boolean; last_run: number | null; last_error: string | null; nodes: number; manual?: boolean };
@@ -20,6 +21,7 @@ type Message =
 	| { type: 'device'; device: Device }
 	| { type: 'removed'; id: string }
 	| ({ type: 'history' } & HistoryRow)
+	| ({ type: 'discovery'; id: string } & SearchState)
 	| FlowMessage;
 
 /** Devices, areas, flows, variables and flow log lines: the server pushes every change over /api/ws, nothing is polled.
@@ -37,6 +39,8 @@ class Live {
 	logListeners = new Set<(flowId: string, line: LogLine) => void>();
 	/** Called with each new history row of any device. */
 	historyListeners = new Set<(row: HistoryRow) => void>();
+	/** Searches for new devices that were started (integration id -> what they found); `at` is when it arrived. */
+	discovery = $state<Record<string, SearchState & { at: number }>>({});
 	connected = $state(false);
 
 	#ws: WebSocket | null = null;
@@ -96,6 +100,9 @@ class Live {
 				for (const listener of this.logListeners) listener(msg.flow_id, msg.line);
 			} else if (msg.type === 'history') {
 				for (const listener of this.historyListeners) listener(msg);
+			} else if (msg.type === 'discovery') {
+				const { type: _type, id, ...state } = msg;
+				this.discovery[id] = { ...state, at: Date.now() };
 			} else if (msg.type === 'flow') {
 				applyActivity(msg.flow_id, msg.passed, msg.waiting, msg.zones);
 			}

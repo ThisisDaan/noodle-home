@@ -1,7 +1,9 @@
 """LIFX bulbs over the local network (the LIFX LAN protocol, UDP port 56700). No cloud, no account, no bridge.
 
-Bulbs are found by a broadcast; extra addresses can be given for networks where broadcasts do not reach (another
-VLAN, a container). They do not push changes, so each bulb is asked for its state every few seconds.
+Nothing searches in the background. The user starts a search (Integrations page), bulbs that answer are listed,
+and the ones they add are saved with their address (setting lifx_bulbs). After that each bulb is asked for its
+state every few seconds, since bulbs do not push changes. Only if a saved bulb stops answering (it may have a new
+address) is one broadcast sent now and then to find it again, until it answers.
 
 Every bulb is treated as a colour bulb with a white range of 1500-9000 K. White-only models ignore the colour
 commands. (Telling models apart needs LIFX's product table; add it here when it matters.)
@@ -24,8 +26,9 @@ log = logging.getLogger(__name__)
 PORT = 56700
 HEADER = 36
 MIN_KELVIN, MAX_KELVIN, DEFAULT_KELVIN = 1500, 9000, 3500
-POLL_EVERY = 8  # seconds between state requests
-DISCOVER_EVERY = 30
+POLL_EVERY = 8  # seconds between state requests to the bulbs the user added
+RECOVER_EVERY = 300  # while a saved bulb is silent: how often to look for its new address
+SEARCH_PACKET_EVERY = 2  # during a search the user started
 GONE_AFTER = 30  # seconds without an answer before a bulb counts as offline
 FADE_MS = 250
 
@@ -114,9 +117,11 @@ class LifxAdapter:
 
     def __init__(self, hub: Hub) -> None:
         self.hub = hub
-        self.bulbs: dict[str, Bulb] = {}  # by device id
+        self.bulbs: dict[str, Bulb] = {}  # the bulbs the user added, by device id
+        self.nearby: dict[str, Bulb] = {}  # answered a search but not added, by device id
         self.client = random.getrandbits(32) or 1  # tells our packets' answers from other apps' on the network
         self._protocol: _Protocol | None = None
+        self._found = None  # while a search runs: where to report what answers
         self.running = False
 
     # --- connection
@@ -130,17 +135,18 @@ class LifxAdapter:
             log.warning("LIFX: cannot open a UDP socket (%s)", err)
             return
         self._protocol, self.running = protocol, True
-        log.info("looking for LIFX bulbs")
+        self.bulbs = {b.device_id: b for b in (Bulb(mac, (ip, PORT)) for mac, ip in config.LIFX_BULBS.items())}
+        log.info("LIFX: %d saved bulb(s)", len(self.bulbs))
         try:
-            last_discovery = 0.0
+            last_recovery = 0.0
             while True:
                 now = time.time()
-                if now - last_discovery >= DISCOVER_EVERY:
-                    self._discover()
-                    last_discovery = now
                 for bulb in list(self.bulbs.values()):
                     self._send(bulb, GET_COLOR, res_required=True)
-                self._check_gone(now)
+                lost = self._check_gone(now)
+                if lost and now - last_recovery >= RECOVER_EVERY:
+                    self._broadcast()  # a lost bulb may have a new address
+                    last_recovery = now
                 await asyncio.sleep(POLL_EVERY)
         finally:
             self.running = False
@@ -148,7 +154,7 @@ class LifxAdapter:
                 protocol.transport.close()
             self._protocol = None
 
-    def _discover(self) -> None:
+    def _broadcast(self) -> None:
         packet = build(GET_SERVICE, source=self.client, tagged=True, res_required=True)
         for host in ["255.255.255.255", *config.LIFX_HOSTS]:
             self._sendto(packet, (host, PORT))
@@ -166,6 +172,44 @@ class LifxAdapter:
         self._sendto(build(msg_type, payload, source=self.client, target=target, seq=bulb.seq,
                            res_required=res_required), bulb.addr)
 
+    # --- searching, only while the user has asked for it
+
+    async def search(self, seconds: float, found) -> None:
+        if not self.running:
+            raise RuntimeError("LIFX is not running")
+        self.nearby.clear()
+        self._found = found
+        try:
+            deadline = time.time() + seconds
+            while time.time() < deadline:
+                self._broadcast()
+                await asyncio.sleep(SEARCH_PACKET_EVERY)
+        finally:
+            self._found = None
+
+    def add_bulb(self, mac: str) -> None:
+        """Keep a bulb the search found: save its address and start following it."""
+        bulb = self.nearby.pop(f"lifx:{mac}", None)
+        if bulb is None:
+            raise KeyError("That bulb is no longer in the list; search again")
+        self.bulbs[bulb.device_id] = bulb
+        config.save({"lifx_bulbs": {**config.LIFX_BULBS, mac: bulb.addr[0]}})
+        if bulb.heard:
+            self._publish(bulb)
+
+    def forget(self, mac: str) -> None:
+        self.bulbs.pop(f"lifx:{mac}", None)
+        self.hub.remove(f"lifx:{mac}")
+        config.save({"lifx_bulbs": {k: v for k, v in config.LIFX_BULBS.items() if k != mac}})
+
+    def bulb_list(self) -> list[dict]:
+        out = []
+        for bulb in self.bulbs.values():
+            device = self.hub.devices.get(bulb.device_id)
+            out.append({"mac": bulb.mac, "name": bulb.label or f"LIFX {bulb.mac[-4:]}", "address": bulb.addr[0],
+                        "available": bool(device and device.available)})
+        return out
+
     # --- incoming
 
     def _packet(self, data: bytes, addr) -> None:
@@ -173,34 +217,49 @@ class LifxAdapter:
         if packet is None:
             return
         msg_type, mac, payload = packet
+        device_id = f"lifx:{mac}"
         if msg_type == STATE_SERVICE and len(payload) >= 5:
             service, port = struct.unpack("<BI", payload[:5])
             if service == 1:  # UDP
-                self._found(mac, (addr[0], port or PORT))
+                self._answered(mac, (addr[0], port or PORT))
         elif msg_type == LIGHT_STATE:
             state = read_state(payload)
-            bulb = self.bulbs.get(f"lifx:{mac}")
-            if state and bulb:
-                bulb.hsbk, bulb.power, bulb.heard = state["hsbk"], state["power"], time.time()
-                bulb.label = state["label"] or bulb.label
-                bulb.addr = (addr[0], bulb.addr[1])
+            bulb = self.bulbs.get(device_id) or self.nearby.get(device_id)
+            if state is None or bulb is None:
+                return
+            bulb.hsbk, bulb.power, bulb.heard = state["hsbk"], state["power"], time.time()
+            bulb.label = state["label"] or bulb.label
+            bulb.addr = (addr[0], bulb.addr[1])
+            if device_id in self.bulbs:
                 self._publish(bulb)
+            elif self._found:
+                self._found(mac, name=bulb.label or "LIFX bulb", detail=addr[0])
 
-    def _found(self, mac: str, addr: tuple[str, int]) -> None:
+    def _answered(self, mac: str, addr: tuple[str, int]) -> None:
         device_id = f"lifx:{mac}"
-        bulb = self.bulbs.get(device_id)
-        if bulb is None:
-            bulb = self.bulbs[device_id] = Bulb(mac, addr, heard=time.time())
-            log.info("LIFX bulb found at %s", addr[0])
-        bulb.addr = addr
-        self._send(bulb, GET_COLOR, res_required=True)
+        if bulb := self.bulbs.get(device_id):
+            if bulb.addr != addr:  # it has a new address: remember it
+                bulb.addr = addr
+                config.save({"lifx_bulbs": {**config.LIFX_BULBS, mac: addr[0]}})
+            self._send(bulb, GET_COLOR, res_required=True)
+        elif self._found:  # not added yet: only noticed while the user is searching
+            bulb = self.nearby.get(device_id)
+            if bulb is None:
+                bulb = self.nearby[device_id] = Bulb(mac, addr)
+                self._found(mac, name="LIFX bulb", detail=addr[0])
+            self._send(bulb, GET_COLOR, res_required=True)  # the answer has its name
 
-    def _check_gone(self, now: float) -> None:
+    def _check_gone(self, now: float) -> bool:
+        """Mark bulbs that stopped answering as offline. True if any saved bulb is not answering."""
+        lost = False
         for bulb in self.bulbs.values():
-            device = self.hub.devices.get(bulb.device_id)
-            if device and device.available and now - bulb.heard > GONE_AFTER:
-                device.available = False
-                self.hub.changed(device)
+            if now - bulb.heard > GONE_AFTER:
+                lost = True
+                device = self.hub.devices.get(bulb.device_id)
+                if device and device.available:
+                    device.available = False
+                    self.hub.changed(device)
+        return lost
 
     # --- what the hub sees
 
