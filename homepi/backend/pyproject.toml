@@ -32,4 +32,4 @@ include = ["homepi*"]
 
 [tool.setuptools.package-data]
 # The web interface, copied here by build-wheel.sh before building.
-homepi = ["static/**/*"]
+homepi = ["static/**/*", "examples/**/*"]

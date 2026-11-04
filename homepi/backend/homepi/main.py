@@ -11,12 +11,12 @@ import types
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import config, flowfiles, integrations, notify, plugins
+from . import aicontext, config, flowfiles, integrations, notify, plugins
 from .flows import FlowEngine
 from .migrations import adopt_hue_buttons
 from .plugins.thermostat import migrate_from_fixed_devices
@@ -455,12 +455,42 @@ class YamlBody(BaseModel):
 
 @app.post("/api/flow/validate", dependencies=[Depends(require_login)])
 def flow_validate(body: YamlBody) -> dict:
-    """Check the text of a flow file without saving it."""
-    try:
-        errors, warnings = flowfiles.validate(flowfiles.parse(body.yaml))
-    except Exception as err:
-        errors, warnings = [str(err).strip().splitlines()[0] if str(err).strip() else "Not valid YAML"], []
-    return {"ok": not errors, "errors": errors, "warnings": warnings}
+    """Check the text of a flow file without saving it: {ok, errors, warnings}, and its id, name and size when ok.
+    Warnings include devices the flow names that are not on this hub."""
+    return aicontext.check(body.yaml, hub)
+
+
+class ImportBody(YamlBody):
+    replace: bool = False
+
+
+@app.post("/api/flow/import", dependencies=[Depends(require_login)])
+def flow_import(body: ImportBody) -> dict:
+    """Add a flow from the text of a flow file. It always starts switched off. A flow with the same id is only
+    replaced with replace=true (and then also switched off, so the new version is looked at first).
+    Problems come back as {ok: false, errors}, not as an HTTP error."""
+    result = aicontext.check(body.yaml, hub)
+    if not result["ok"]:
+        return result
+    flow = flowfiles.from_doc(flowfiles.parse(body.yaml))
+    exists = flow["id"] in flows.flows
+    if exists and not body.replace:
+        return {**result, "ok": False, "exists": True,
+                "errors": [f"A flow with the id '{flow['id']}' already exists ({flows.flows[flow['id']]['name']}). "
+                           "Change the id, or replace it."]}
+    if exists:
+        flows.update(flow["id"], flow["name"], flow["graph"], False)
+    else:
+        flows.create(flow["name"], flow["graph"], enabled=False, flow_id=flow["id"])
+    return {**result, "replaced": exists}
+
+
+@app.get("/api/flow/context", dependencies=[Depends(require_login)])
+def flow_context(format: str = "json"):
+    """Everything an AI needs to write a flow for this hub: format, nodes, your devices, rooms, examples.
+    ?format=markdown returns it as a prompt to paste into an AI chat."""
+    context = aicontext.build(hub, flows, store)
+    return PlainTextResponse(aicontext.markdown(context)) if format == "markdown" else context
 
 
 @app.get("/api/flows", dependencies=[Depends(require_login)])
@@ -685,7 +715,7 @@ async def live(ws: WebSocket) -> None:
     if is_app:
         _app_clients += 1
     await ws.send_json({"type": "snapshot", "devices": [d.as_dict() for d in hub.devices.values()],
-                        "areas": store.areas()})
+                        "areas": store.areas(), "flow_issues": flows.file_issues})
 
     async def send(message: dict) -> None:
         await ws.send_json(message)

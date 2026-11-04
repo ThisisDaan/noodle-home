@@ -5,10 +5,12 @@ import { layout, type SavedLayout } from './layout.svelte.ts';
 export type FlowSummary = { id: string; name: string; enabled: boolean; last_run: number | null; last_error: string | null; nodes: number; manual?: boolean };
 export type Variables = Record<string, { value: string; updated: number }>;
 export type LogLine = { time: number; message: string };
+export type FlowIssues = Record<string, { errors: string[]; warnings: string[] }>;
 export type HistoryRow = { device_id: string; key: string; ts: number; value: boolean | number | string | null };
 
 type Message =
-	| { type: 'snapshot'; devices: Device[]; areas: string[] }
+	| { type: 'snapshot'; devices: Device[]; areas: string[]; flow_issues?: FlowIssues }
+	| { type: 'flow_files'; issues: FlowIssues }
 	| { type: 'areas'; areas: string[] }
 	| { type: 'layout'; layout: SavedLayout }
 	| { type: 'flows'; flows: FlowSummary[] }
@@ -25,6 +27,8 @@ class Live {
 	devices = $state<Record<string, Device>>({});
 	areas = $state<string[]>([]);
 	flows = $state<FlowSummary[] | null>(null);
+	/** Problems found in flow files that were edited by hand (file name -> errors and warnings). */
+	flowIssues = $state<FlowIssues>({});
 	variables = $state<Variables | null>(null);
 	/** Called with each new flow log line. */
 	logListeners = new Set<(flowId: string, line: LogLine) => void>();
@@ -67,6 +71,9 @@ class Live {
 			if (msg.type === 'snapshot') {
 				this.devices = Object.fromEntries(msg.devices.map((d) => [d.id, d]));
 				this.areas = msg.areas;
+				this.flowIssues = msg.flow_issues ?? {};
+			} else if (msg.type === 'flow_files') {
+				this.flowIssues = msg.issues;
 			} else if (msg.type === 'areas') {
 				this.areas = msg.areas;
 			} else if (msg.type === 'layout') {

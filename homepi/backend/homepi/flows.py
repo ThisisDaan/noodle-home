@@ -337,6 +337,8 @@ class FlowEngine:
             self.file_issues[path.name] = {"errors": errors, "warnings": warnings}
         else:
             self.file_issues.pop(path.name, None)
+        if self._files_ready:
+            self.hub.broadcast({"type": "flow_files", "issues": self.file_issues})  # the Automations page shows them
         known = flow["id"] if flow else self.files.id_for(path)
         for line in errors:
             log.warning("flow file %s: %s", path.name, line)

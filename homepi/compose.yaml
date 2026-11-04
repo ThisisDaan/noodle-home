@@ -11,6 +11,8 @@ services:
     restart: unless-stopped
     environment:
       - TZ=${TZ:-UTC}              # your time zone, e.g. Europe/Amsterdam (also settable in the app)
+      - HOMEPI_PORT=${NOODLE_PORT:-8090}
+      - HOMEPI_EXTRA_PORT=${NOODLE_EXTRA_PORT:-80}   # also served here, so http://this-machine works; 0 = off
     volumes:
       - ./data:/data
       - /etc/localtime:/etc/localtime:ro

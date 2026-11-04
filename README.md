@@ -137,7 +137,7 @@ The UI is at `https://<pi-ip>:8443` (self-signed certificate, accept the warning
 
 Every automation is a YAML file in `data/homepi/config/flows/` (inside the container: `/data/config/flows/`). Edit them by hand or with an AI; the app reloads a changed file within a couple of seconds, and the visual editor writes the same files (your comments are kept). A flow that is new to the app always starts switched off.
 
-Example flows (a blanket and a heater with safety cut-offs) are in `homepi/examples/flows/`: copy one into that folder and change the device ids to yours.
+Example flows (a blanket and a heater with safety cut-offs) are in `homepi/backend/homepi/examples/flows/`: copy one into that folder and change the device ids to yours.
 
 ```bash
 docker compose exec homepi python -m homepi validate    # check all flow files

@@ -66,6 +66,59 @@
 		goto(`/automations/flow/${flow.id}`);
 	}
 
+	// --- AI and import: a prompt with your devices to paste into an AI chat, and a place to paste the answer
+	type Check = { ok: boolean; errors: string[]; warnings: string[]; id?: string; name?: string; nodes?: number; exists?: boolean };
+	let importDialog = $state<HTMLDialogElement>();
+	let prompt = $state('');
+	let promptBox = $state<HTMLTextAreaElement>();
+	let copied = $state(false);
+	let pasted = $state('');
+	let check = $state<Check | null>(null);
+	let importing = $state(false);
+
+	async function showPrompt() {
+		const res = await fetch('/api/flow/context?format=markdown');
+		prompt = res.ok ? await res.text() : '';
+		if (!res.ok) error = 'Could not load the prompt';
+	}
+
+	async function copyPrompt() {
+		if (!prompt) await showPrompt();
+		try {
+			await navigator.clipboard.writeText(prompt);
+		} catch {
+			// Browsers only allow the clipboard API on https: select the text so Ctrl+C works.
+			promptBox?.select();
+			document.execCommand('copy');
+		}
+		copied = true;
+		setTimeout(() => (copied = false), 2500);
+	}
+
+	// Check the pasted text a moment after typing stops.
+	$effect(() => {
+		const text = pasted;
+		check = null;
+		if (!text.trim()) return;
+		const timer = setTimeout(async () => {
+			check = await api<Check>('/flow/validate', { body: { yaml: text } });
+		}, 400);
+		return () => clearTimeout(timer);
+	});
+
+	async function addPasted(replace = false) {
+		importing = true;
+		try {
+			const result = await api<Check>('/flow/import', { body: { yaml: pasted, replace } });
+			if (result.ok && result.id) {
+				importDialog?.close();
+				goto(`/automations/flow/${result.id}`);
+			} else check = result;
+		} finally {
+			importing = false;
+		}
+	}
+
 	$effect(() => {
 		load();
 	});
@@ -78,9 +131,20 @@
 			{#if flows}{flows.filter((f) => f.enabled).length} of {flows.length} running{:else}Loading…{/if}
 		</p>
 	</div>
-	<button class="btn btn-primary btn-sm" onclick={openNew}><Icon name="plus" class="size-4" />New flow</button>
+	<div class="flex gap-2">
+		<button class="btn btn-sm" onclick={() => importDialog?.showModal()}><Icon name="note" class="size-4" />Ask an AI / import</button>
+		<button class="btn btn-primary btn-sm" onclick={openNew}><Icon name="plus" class="size-4" />New flow</button>
+	</div>
 </div>
 {#if error}<div role="alert" class="alert alert-error alert-soft mb-4">{error}</div>{/if}
+{#each Object.entries(live.flowIssues) as [file, issue] (file)}
+	{#if issue.errors.length}
+		<div role="alert" class="alert alert-warning alert-soft mb-3 flex-col items-start gap-1 text-sm">
+			<span class="font-semibold">{file} is not valid, so its flow keeps its previous version</span>
+			{#each issue.errors.slice(0, 3) as line (line)}<span>{line}</span>{/each}
+		</div>
+	{/if}
+{/each}
 
 {#if !flows}
 	<div class="flex justify-center py-20"><span class="loading loading-dots loading-lg text-primary"></span></div>
@@ -140,6 +204,43 @@
 				<button class="btn btn-primary" disabled={!ready} onclick={useTemplate}>Create flow</button>
 			</div>
 		{/if}
+	</div>
+	<form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<dialog bind:this={importDialog} class="modal modal-bottom sm:modal-middle">
+	<div class="modal-box max-w-2xl">
+		<h3 class="text-lg font-bold">Ask an AI to write a flow</h3>
+		<p class="mb-3 text-sm opacity-70">
+			1. Copy the prompt (it lists your devices and every node, so the AI can use your real ones). 2. Paste it into an AI chat and
+			describe what you want. 3. Paste its answer below. New flows always start switched off.
+		</p>
+		<div class="mb-4 flex flex-wrap items-center gap-2">
+			<button class="btn btn-sm btn-primary" onclick={copyPrompt}>{copied ? 'Copied' : 'Copy prompt'}</button>
+			<button class="btn btn-sm btn-ghost" onclick={showPrompt}>Show prompt</button>
+		</div>
+		{#if prompt}
+			<textarea bind:this={promptBox} class="textarea textarea-sm mb-4 h-32 w-full font-mono text-xs" readonly value={prompt}></textarea>
+		{/if}
+
+		<label class="floating-label"><span>The flow (YAML)</span>
+			<textarea class="textarea h-48 w-full font-mono text-xs" placeholder="Paste the flow here" bind:value={pasted}></textarea></label>
+		{#if check}
+			<div class="mt-3 flex flex-col gap-1 text-sm">
+				{#if check.ok}
+					<div role="alert" class="alert alert-success alert-soft">Looks right: "{check.name}", {check.nodes} nodes.</div>
+				{/if}
+				{#each check.errors as line (line)}<div role="alert" class="alert alert-error alert-soft">{line}</div>{/each}
+				{#each check.warnings as line (line)}<div role="alert" class="alert alert-warning alert-soft">{line}</div>{/each}
+			</div>
+		{/if}
+		<div class="modal-action">
+			<button class="btn" onclick={() => importDialog?.close()}>Close</button>
+			{#if check?.exists}
+				<button class="btn btn-warning" disabled={importing} onclick={() => addPasted(true)}>Replace the existing flow</button>
+			{/if}
+			<button class="btn btn-primary" disabled={!check?.ok || importing} onclick={() => addPasted(false)}>Add (switched off)</button>
+		</div>
 	</div>
 	<form method="dialog" class="modal-backdrop"><button>close</button></form>
 </dialog>

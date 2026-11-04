@@ -27,7 +27,7 @@ def canon(graph: dict) -> dict:
             "edges": graph["edges"]}
 
 
-EXAMPLES = sorted((Path(__file__).resolve().parents[2] / "examples" / "flows").glob("*.yaml"))
+EXAMPLES = sorted((Path(__file__).resolve().parents[1] / "homepi" / "examples" / "flows").glob("*.yaml"))
 
 
 def test_there_are_examples():

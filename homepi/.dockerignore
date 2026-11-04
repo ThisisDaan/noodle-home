@@ -6,4 +6,3 @@ backend/homepi/static
 backend/build
 backend/dist
 backend/*.egg-info
-examples
