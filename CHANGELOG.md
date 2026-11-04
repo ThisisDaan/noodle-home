@@ -2,6 +2,10 @@
 
 The Noodle hub follows [semantic versioning](https://semver.org). The version is `__version__` in `noodle/backend/noodle/__init__.py`; a release is a git tag `vX.Y.Z` with the same number (the release workflow checks it).
 
+## 0.1.1
+
+First published release: the Docker image and the in-app update check. Same features as 0.1.0 (never released).
+
 ## 0.1.0
 
 First version that can be installed on its own. Licensed under GPL-3.0-or-later.

@@ -17,8 +17,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install -r noodle/backend/requirements-dev.txt
-      - run: |
-          pytest -q > /tmp/out.txt 2>&1 || { echo "::error::$(tail -n 40 /tmp/out.txt | paste -sd'|')"; exit 1; }
+      - run: pytest -q
         working-directory: noodle/backend
 
   frontend:

@@ -38,3 +38,8 @@ include = ["noodle*"]
 [tool.setuptools.package-data]
 # The web interface, copied here by build-wheel.sh before building.
 noodle = ["static/**/*", "examples/**/*"]
+
+[tool.pytest.ini_options]
+# So a plain `pytest` (as in CI) finds the package, not only `python -m pytest`.
+pythonpath = ["."]
+testpaths = ["tests"]
