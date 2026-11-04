@@ -1,10 +1,13 @@
-# Just the Noodle hub, nothing else. Run from this folder:   docker compose up -d --build
+# Just the Noodle hub, nothing else. Run from this folder:   docker compose up -d
 # Then open http://<this machine>:8090 and follow the setup wizard.
 #
 # It needs the host network (Linux) to find devices on your network and to use Bluetooth.
 # Your settings, flows and database live in ./data (flows are YAML files in ./data/config/flows).
 services:
   noodle:
+    # Published image (what "Check for updates" on the System page pulls). To build from source instead:
+    # docker compose up -d --build
+    image: ghcr.io/thisisdaan/noodle:latest
     build: .
     container_name: noodle
     network_mode: host

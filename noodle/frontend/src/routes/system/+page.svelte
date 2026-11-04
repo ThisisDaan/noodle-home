@@ -58,6 +58,44 @@
 		logs = { name, text: res.logs || '(no output)' };
 	}
 
+	import { live } from '#lib/live.svelte.ts';
+	type UpdateInfo = { current: string; latest: string | null; available: boolean; url: string | null; notes: string; error: string | null; can_install: boolean };
+	let update = $state<UpdateInfo | null>(null);
+	let updateBusy = $state('');
+	let restarting = $state(false);
+
+	async function checkUpdate() {
+		updateBusy = 'Checking…';
+		try {
+			update = await api<UpdateInfo>('/update/check', { body: {} });
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		} finally {
+			updateBusy = '';
+		}
+	}
+
+	async function installUpdate() {
+		if (!confirm(`Update Noodle to ${update?.latest}? It restarts for a few seconds.`)) return;
+		updateBusy = 'Downloading…';
+		try {
+			await api('/update/install', { body: {} });
+			restarting = true;
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		} finally {
+			updateBusy = '';
+		}
+	}
+
+	// The hub restarts into the new version; when the live connection comes back, load the new interface.
+	let wasDown = false;
+	$effect(() => {
+		if (!restarting) return;
+		if (!live.connected) wasDown = true;
+		else if (wasDown) location.reload();
+	});
+
 	let notifyInfo = $state<{ configured: boolean; server: string; topic: string; app_connections: number } | null>(null);
 	let notifyResult = $state('');
 
@@ -120,6 +158,33 @@
 <div class="mb-4 flex items-center justify-between gap-3">
 	<h1 class="text-2xl font-bold">System</h1>
 	<button class="btn btn-sm" onclick={load}>Refresh</button>
+</div>
+<div class="card bg-base-100 mb-4 shadow-sm">
+	<div class="card-body gap-2 p-4">
+		<h2 class="card-title text-base">Noodle {update?.current ?? ''}</h2>
+		{#if restarting}
+			<p class="text-sm"><span class="loading loading-dots loading-sm"></span> Updating… this page reloads when Noodle is back.</p>
+		{:else}
+			{#if update?.error}
+				<p class="text-sm opacity-70">{update.error}</p>
+			{:else if update && !update.available}
+				<p class="text-sm opacity-70">You are up to date.</p>
+			{:else if update?.available}
+				<p class="text-sm">Version {update.latest} is available.
+					{#if update.url}<a class="link" href={update.url} target="_blank" rel="noopener">What changed</a>{/if}</p>
+			{/if}
+			<div class="flex flex-wrap gap-2">
+				<button class="btn btn-sm" onclick={checkUpdate} disabled={!!updateBusy}>{updateBusy || 'Check for updates'}</button>
+				{#if update?.available}
+					{#if update.can_install}
+						<button class="btn btn-primary btn-sm" onclick={installUpdate} disabled={!!updateBusy}>Update to {update.latest}</button>
+					{:else}
+						<span class="text-sm opacity-70">Update by hand: <code>docker compose pull && docker compose up -d</code></span>
+					{/if}
+				{/if}
+			</div>
+		{/if}
+	</div>
 </div>
 {#if error}<div role="alert" class="alert alert-error alert-soft mb-4">{error}</div>{/if}
 

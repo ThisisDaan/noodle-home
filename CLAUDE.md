@@ -1,6 +1,6 @@
 # Noodle hub (repo notes)
 
-This repo has two things: the Raspberry Pi stack (`compose.yaml`, `install.sh`, `backup.sh`, Mosquitto, Zigbee2MQTT, Home Assistant, Thread) and the Noodle hub in `noodle/` (the product), plus the Android app in `noodle-android/`.
+This repo is only Noodle: the hub in `noodle/` (the product) and the Android app in `noodle-android/`. The author's own Raspberry Pi stack (Mosquitto, Zigbee2MQTT, Home Assistant, Thread, UniFi) lives outside this repo in `../home-network`; do not add it back.
 
 ## The hub (`noodle/`)
 

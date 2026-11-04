@@ -22,7 +22,7 @@ docker compose up -d --build
 
 Open `http://<this machine>:8090`. Your data and settings are in `noodle/data/` (flows are plain files in `data/config/flows/`).
 
-**From a published image** (once a release is tagged, the CI workflow pushes `ghcr.io/<owner>/noodle`): in `noodle/compose.yaml` replace `build: .` with `image: ghcr.io/<owner>/noodle:latest`.
+**Updating:** `noodle/compose.yaml` uses the published image `ghcr.io/thisisdaan/noodle` (pushed by the release workflow when a `v*` tag is created). On the System page, *Check for updates* looks at the latest GitHub release and *Update* pulls the new image and restarts Noodle into it (needs the Docker socket mount). Building from source instead: `docker compose up -d --build`.
 
 **With pip** (Python 3.11 or newer):
 
@@ -112,101 +112,6 @@ Optional hooks: `preset()` (already set up counts as added), `routes()` (own API
 ## Develop
 
 Backend: `cd noodle/backend && pip install -r requirements-dev.txt && pytest`, and run it with `NOODLE_DATA=./dev-data python -m noodle`. Frontend: `cd noodle/frontend && bun install && bun run dev` (it proxies `/api` to port 8090), `bun run check` for types. To point a local hub at services elsewhere, set the addresses in the app (Integrations) or with `MQTT_HOST`, `MATTER_URL` and `OTBR_URL`. See [CONTRIBUTING.md](CONTRIBUTING.md).
-
----
-
-# The full Raspberry Pi stack
-
-This repository also holds the setup Noodle grew out of: a Raspberry Pi 4 running Mosquitto, Zigbee2MQTT, Home Assistant, a Thread border router, Matter, an optional UniFi controller and Noodle, all as plain Docker containers (`compose.yaml`). You do not need it to use Noodle.
-
-## Setup
-
-1. Flash **Raspberry Pi OS Lite (64-bit)** with Raspberry Pi Imager. Set hostname, user, password and SSH under *Edit settings*.
-2. Plug in the Zigbee stick, boot the Pi and give it a fixed IP in your router.
-3. Get this repository onto the Pi and run the installer:
-
-   ```bash
-   ssh youruser@noodle.local
-   git clone https://github.com/ThisisDaan/noodle-home.git
-   cd noodle-home && ./install.sh
-   ```
-
-| Service | URL |
-|---|---|
-| Noodle | `http://noodle.local` or `http://<pi-ip>:8090` (needs the Pi's hostname set to `noodle`: `sudo hostnamectl set-hostname noodle`) |
-| Home Assistant | `http://<pi-ip>:8123` |
-| Zigbee2MQTT | `http://<pi-ip>:8081` |
-| MQTT broker | `<pi-ip>:1883` |
-
-## Restoring an old setup
-
-If you already have a Zigbee2MQTT or Home Assistant setup, put its data in `backups/` (git-ignored) and copy it in after `install.sh` has run once, on the Pi:
-
-```bash
-docker compose down
-cp -a backups/<zigbee2mqtt backup>/{configuration.yaml,database.db,coordinator_backup.json} data/zigbee2mqtt/
-sudo cp -a backups/<home assistant backup>/data/. data/homeassistant/
-docker compose up -d
-```
-
-- **Zigbee2MQTT:** its config should use `mqtt://mosquitto:1883`, and your stick is mapped to `/dev/ttyUSB0` by compose (the `zstack` adapter setting must match your stick).
-- **Home Assistant:** an unprotected, extracted `/config` folder needs no restore wizard. If its MQTT integration points at an IP address, give the Pi that same IP (a fixed address in your router) or change it in Home Assistant.
-- `install.sh` sets `ZIGBEE_DEVICE` in `.env` to your stick's stable path from `ls /dev/serial/by-id/`. If you have several USB devices, set it by hand.
-
-## Everyday commands
-
-```bash
-docker compose up -d          # start / apply changes
-docker compose pull && docker compose up -d   # update everything
-docker compose logs -f zigbee2mqtt
-./backup.sh                   # archive data/ and .env into backups/
-```
-
-## Thread (MG24 stick)
-
-The `otbr` container is the Thread border router; `matter-server` handles the Matter devices that run over Thread.
-
-1. **Flash OpenThread RCP firmware.** The stick ships with Zigbee firmware, which the border router can't use. On a PC, open the Sonoff web flasher (https://dongle.sonoff.tech/sonoff-dongle-flasher/) in Chrome or Edge and pick the *OpenThread RCP* firmware for the Dongle Plus MG24.
-2. **Plug it into the Pi** and find its path with `ls /dev/serial/by-id/`. Put it in `.env` as `THREAD_DEVICE`, and set `THREAD_BACKBONE_IF` to `eth0` or `wlan0`.
-3. **Enable IPv6 forwarding on the Pi** (one time):
-
-   ```bash
-   sudo tee /etc/sysctl.d/60-otbr.conf <<'EOF'
-   net.ipv6.conf.all.disable_ipv6 = 0
-   net.ipv4.conf.all.forwarding = 1
-   net.ipv6.conf.all.forwarding = 1
-   net.ipv6.conf.all.accept_ra_rt_info_max_plen = 64
-   net.ipv6.conf.all.accept_ra = 2
-   EOF
-   sudo sysctl --system
-   ```
-
-4. `docker compose up -d`, then check `docker compose logs -f otbr` for errors.
-5. In Noodle, add **Matter and Thread** under Integrations (Matter server `ws://127.0.0.1:5580/ws`, border router `http://127.0.0.1:8082`), then pair Matter devices on the System page with their setup code. If you also use Home Assistant: add **Open Thread Border Router** (`http://127.0.0.1:8082`), **Thread** and **Matter** (`ws://127.0.0.1:5580/ws`) there, and pair with its Companion app (your phone needs Bluetooth on and the same Wi-Fi).
-
-`matter2mqtt` forwards Matter button events to MQTT (`matter/<node>/<endpoint>/<event>`) for Home Assistant's scroll wheel automation.
-
-## Optional: UniFi controller
-
-A UniFi access point needs a controller. `install.sh` generates the database passwords in `.env`, then:
-
-```bash
-docker compose --profile unifi up -d
-```
-
-The UI is at `https://<pi-ip>:8443` (self-signed certificate, accept the warning). The Pi 4 CPU cannot run recent MongoDB, so `unifi-db` is pinned to `mongo:4.4.18`; if it logs "Illegal instruction", try `mongo:4.4.9`. The first start creates the `unifi` database user through `unifi/init-mongo.sh`. If you ever need to start the database from scratch, delete `data/unifi-db/` while the containers are stopped.
-
-**Adopting the access point** (the provider router keeps doing DHCP):
-
-1. Factory reset the AP (hold the reset button about 10 seconds).
-2. Finish the setup wizard in the controller. Then go to *Settings -> System -> Network Application* and set the **Inform host** to the Pi's IP, with *Override* ticked.
-3. The AP appears under *UniFi Devices* as pending. Adopt it. If it never shows up, SSH into the AP (user `ubnt`, password `ubnt` after a reset) and run `set-inform http://<pi-ip>:8080/inform`, then adopt again.
-4. Recreate your Wi-Fi network with the same name and password as before, so your devices reconnect without changes.
-
-## Notes
-
-- Mosquitto allows anonymous connections, which is fine on a home LAN but not on an exposed network.
-- `data/` holds all state and is git-ignored. Keep `backups/` somewhere off the Pi.
 
 ## Licence
 

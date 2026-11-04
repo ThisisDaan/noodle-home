@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import aicontext, config, flowfiles, integrations, notify, plugins
+from . import aicontext, config, flowfiles, integrations, notify, plugins, updates
 from .flows import FlowEngine
 from .discovery import Discovery
 from .migrations import adopt_hue_buttons, retire_thermostat
@@ -607,6 +607,21 @@ async def system() -> dict:
 
     infos = await asyncio.gather(*(info(p) for p in PLUGINS))
     return {p.id: i for p, i in zip(PLUGINS, infos) if i is not None}
+
+
+@app.post("/api/update/check", dependencies=[Depends(require_login)])
+async def update_check() -> dict:
+    return await updates.check()
+
+
+@app.post("/api/update/install", dependencies=[Depends(require_login)])
+async def update_install() -> dict:
+    """Pulls the new image and restarts the hub into it; the page reloads when the hub is back."""
+    try:
+        await updates.install()
+    except Exception as err:
+        raise HTTPException(400, str(err))
+    return {"ok": True}
 
 
 @app.get("/api/variables", dependencies=[Depends(require_login)])

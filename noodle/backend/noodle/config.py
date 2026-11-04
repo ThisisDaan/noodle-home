@@ -60,6 +60,9 @@ _ORIGINAL_TZ = os.environ.get("TZ")
 # Set to 0 for local development against the real devices, so rules and flows don't run twice.
 AUTOMATIONS = _env("AUTOMATIONS", "1") != "0"
 DOCKER_SOCKET = os.environ.get("DOCKER_SOCKET", "/var/run/docker.sock")
+# Where "Check for updates" looks (GitHub releases), and the name of the hub's own container.
+UPDATE_REPO = os.environ.get("NOODLE_UPDATE_REPO", "ThisisDaan/noodle-home")
+CONTAINER_NAME = os.environ.get("NOODLE_CONTAINER", "noodle")
 
 # Xiaomi Bluetooth thermometers to listen for: "MAC=Name,MAC=Name".
 BLE_SENSORS = dict(item.split("=", 1) for item in os.environ.get(

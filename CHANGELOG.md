@@ -12,6 +12,7 @@ First version that can be installed on its own. Licensed under GPL-3.0-or-later.
 - **Settings are YAML too:** `settings.yaml`, `secrets.yaml` (owner only), `dashboard.yaml`, `areas.yaml`. Hand edits are picked up within seconds; only the integration a setting belongs to reconnects.
 - **First-run wizard** for new hubs: name, location and time zone, services, connecting them, a first device.
 - **Dashboard cards** (status, favourites, rooms, quick actions, sensor graph) and device list grouping and sorting.
+- **Updates:** *Check for updates* on the System page compares with the latest GitHub release; *Update* pulls the new image and restarts Noodle into it.
 - **Packaging:** `pip install` of a wheel with the interface inside (`noodle` command), a hub-only `noodle/compose.yaml`, and a systemd unit template.
 - Docker is optional: without a socket the System page simply has no containers section.
 
