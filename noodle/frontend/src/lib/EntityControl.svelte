@@ -98,7 +98,7 @@
 {:else if entity.kind === 'light' || entity.kind === 'switch' || entity.kind === 'fan'}
 	<div class="flex flex-col gap-2">
 		<label class="flex items-center justify-between gap-3">
-			<span class="text-sm">{entity.kind === 'light' ? 'Light' : entity.kind === 'fan' ? 'Fan' : entity.key === 'heat' ? 'Thermostat' : 'Power'}</span>
+			<span class="text-sm">{entity.kind === 'light' ? 'Light' : entity.kind === 'fan' ? 'Fan' : 'Power'}</span>
 			<input type="checkbox" class="toggle toggle-primary" checked={on} disabled={busy || !device.available}
 				onchange={(e) => send({ on: e.currentTarget.checked })} />
 		</label>

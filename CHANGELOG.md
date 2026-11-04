@@ -6,7 +6,7 @@ The Noodle hub follows [semantic versioning](https://semver.org). The version is
 
 First version that can be installed on its own. Licensed under GPL-3.0-or-later.
 
-- **Integrations are plugins.** Zigbee (Zigbee2MQTT), Matter and Thread, Philips Hue, Bluetooth sensors, ntfy notifications, a thermostat, Docker containers. Each one is a module in `plugins/` with its settings, status, endpoints, flow nodes and System page info; the Integrations page is generated from them.
+- **Integrations are plugins.** Zigbee (Zigbee2MQTT), Matter and Thread, Philips Hue, Bluetooth sensors, ntfy notifications, Docker containers. Each one is a module in `plugins/` with its settings, status, endpoints, flow nodes and System page info; the Integrations page is generated from them.
 - **Automations are YAML files** in `config/flows/`, editable by hand, by an AI or in the visual editor (comments are kept). New flows always start switched off. `noodle validate` and `noodle schema` check them.
 - **AI authoring.** "Ask an AI / import" copies a prompt with your real devices, validates the answer and adds it switched off. API: `/api/flow/context`, `/api/flow/import`, `/api/flow/validate`, `/api/flow/schema`.
 - **Settings are YAML too:** `settings.yaml`, `secrets.yaml` (owner only), `dashboard.yaml`, `areas.yaml`. Hand edits are picked up within seconds; only the integration a setting belongs to reconnects.

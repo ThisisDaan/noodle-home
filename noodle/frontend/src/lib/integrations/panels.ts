@@ -4,7 +4,6 @@ import HuePanel from './HuePanel.svelte';
 import LifxPanel from './LifxPanel.svelte';
 import LocationPanel from './LocationPanel.svelte';
 import NotifyPanel from './NotifyPanel.svelte';
-import ThermostatPanel from './ThermostatPanel.svelte';
 import type { PanelProps } from './types.ts';
 
 /** The panels an integration can ask for with `panel = "..."` in its plugin (backend plugins/base.py). */
@@ -13,6 +12,5 @@ export const PANELS: Record<string, Component<PanelProps>> = {
 	hue: HuePanel,
 	lifx: LifxPanel,
 	location: LocationPanel,
-	notify: NotifyPanel,
-	thermostat: ThermostatPanel
+	notify: NotifyPanel
 };

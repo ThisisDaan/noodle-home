@@ -39,7 +39,7 @@ After the first login a short setup wizard asks for your home's name and locatio
 
 ## Integrations
 
-Zigbee (through Zigbee2MQTT), Matter and Thread (python-matter-server and an OpenThread border router), Philips Hue (paired from the app), LIFX (found on the network, no cloud), Bluetooth temperature and humidity sensors, ntfy and in-app phone notifications, Google speakers (speak), a thermostat, and Docker containers (restart and logs). Writing a new one is a single module, see "Writing an integration" below.
+Zigbee (through Zigbee2MQTT), Matter and Thread (python-matter-server and an OpenThread border router), Philips Hue (paired from the app), LIFX (found on the network, no cloud), Bluetooth temperature and humidity sensors, ntfy and in-app phone notifications, Google speakers (speak), and Docker containers (restart and logs). Heating is a flow: the Thermostat node watches a room sensor and switches a heater plug. Writing a new one is a single module, see "Writing an integration" below.
 
 ## Flows as files
 

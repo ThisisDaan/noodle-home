@@ -25,7 +25,7 @@
 	const TYPE_ORDER = ['Lights', 'Plugs and switches', 'Buttons and remotes', 'Sensors', 'Heating', 'Other'];
 	function typeOf(d: Device): string {
 		const kinds = new Set(d.entities.map((e) => e.kind));
-		if (d.source === 'thermostat') return 'Heating';
+		if (kinds.has('climate')) return 'Heating';
 		if (kinds.has('light')) return 'Lights';
 		if (kinds.has('switch')) return 'Plugs and switches';
 		if (kinds.has('button')) return 'Buttons and remotes';

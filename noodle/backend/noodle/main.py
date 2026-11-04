@@ -19,7 +19,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import aicontext, config, flowfiles, integrations, notify, plugins
 from .flows import FlowEngine
 from .discovery import Discovery
-from .migrations import adopt_hue_buttons
+from .migrations import adopt_hue_buttons, retire_thermostat
 from .hub import Hub
 from .store import Store
 from .yamlfile import YamlFile
@@ -37,6 +37,7 @@ for adapter in ADAPTERS.values():
 flows = FlowEngine(hub, store)
 discovery = Discovery(hub)
 adopt_hue_buttons(flows)
+retire_thermostat(flows)
 # Forwarded presses: Hue switch buttons, or else a phone notification button.
 zigbee.on_hook = lambda name: hue.press(name) or flows.webhook(name)
 

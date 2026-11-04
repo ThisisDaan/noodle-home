@@ -72,16 +72,17 @@ HUE_KEY = os.environ.get("HUE_KEY", "")
 # Integrations the user added on the Integrations page (empty = work it out from what is set up, see integrations.py).
 INTEGRATIONS: list[str] = []
 
-# The thermostat: a room sensor and a heater plug, picked on the Integrations page.
+# The old thermostat integration (a room sensor and a heater plug). It is now the Thermostat node in a flow;
+# these are only read once, to turn an old install's settings into that flow (migrations.retire_thermostat).
 THERMOSTAT_ID = "thermostat:main"
 THERMOSTAT_NAME = "Thermostat"
 THERMOSTAT_SENSOR_DEVICE = THERMOSTAT_SENSOR_KEY = THERMOSTAT_HEATER_DEVICE = THERMOSTAT_HEATER_KEY = ""
 
-# Room names used to guess a device's area from its name ("Keuken Lamp" -> Keuken).
 # LIFX: the bulbs the user added (address by hardware id), and extra addresses to search when a broadcast
 # does not reach them. Nothing searches except when the user presses Search.
 LIFX_BULBS = dict(item.split("=", 1) for item in os.environ.get("LIFX_BULBS", "").split(",") if "=" in item)
 LIFX_HOSTS: list[str] = [h.strip() for h in os.environ.get("LIFX_HOSTS", "").split(",") if h.strip()]
+# Room names used to guess a device's area from its name ("Keuken Lamp" -> Keuken).
 DEFAULT_AREAS = ["Living room", "Kitchen", "Bedroom", "Bathroom", "Hallway", "Garden"]
 
 

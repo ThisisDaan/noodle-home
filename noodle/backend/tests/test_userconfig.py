@@ -172,38 +172,6 @@ class _Running:
         pass
 
 
-# --- the thermostat is no longer tied to one install's devices ---------------------------------------
-
-def test_fresh_install_has_no_thermostat(tmp_path, monkeypatch):
-    from noodle.hub import Hub
-    from noodle.plugins.thermostat import PLUGIN
-
-    s = store(tmp_path, monkeypatch)
-    monkeypatch.setattr(config, "BLE_SENSORS", {})
-    assert config.THERMOSTAT_SENSOR_DEVICE == "" and not PLUGIN.preset()
-    adapter = PLUGIN.create_adapter(Hub(s))
-    assert adapter.configured is False and PLUGIN.status(adapter) is None
-    asyncio.run(adapter.run())  # returns at once, publishes nothing
-    assert adapter.hub.devices == {}
-
-
-def test_thermostat_follows_the_settings_and_can_be_removed(tmp_path, monkeypatch):
-    from noodle.hub import Hub
-    from noodle.plugins.thermostat import PLUGIN
-
-    s = store(tmp_path, monkeypatch)
-    for attr, value in (("THERMOSTAT_SENSOR_DEVICE", "ble:1"), ("THERMOSTAT_SENSOR_KEY", "temperature"),
-                        ("THERMOSTAT_HEATER_DEVICE", "zigbee:2"), ("THERMOSTAT_HEATER_KEY", "switch"),
-                        ("THERMOSTAT_NAME", "Study heating"), ("THERMOSTAT_ID", "thermostat:study")):
-        monkeypatch.setattr(config, attr, value)
-    hub = Hub(s)
-    adapter = PLUGIN.create_adapter(hub)
-    adapter._publish()
-    assert hub.devices["thermostat:study"].name == "Study heating"
-    PLUGIN.on_remove(hub, adapter)
-    assert "thermostat:study" not in hub.devices
-
-
 # --- where the home is, and its time zone --------------------------------------------------------------
 
 def test_location_and_timezone_are_settings(files, monkeypatch):
