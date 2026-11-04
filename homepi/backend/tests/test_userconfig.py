@@ -136,13 +136,15 @@ def test_hand_edited_rooms_are_picked_up_and_held_back_writes_are_flushed(tmp_pa
 def test_dashboard_layout_is_a_file(tmp_path, monkeypatch):
     from homepi import main
     monkeypatch.setattr(main, "dashboard", YamlFile(tmp_path / "dashboard.yaml"))
-    assert main.get_layout() == {"rooms": [], "hidden": [], "favorites": [], "order": []}
+    assert main.get_layout() == {"rooms": [], "hidden": [], "favorites": [], "order": [], "widgets": None,
+                                 "devices_view": {"group_by": "room", "sort": "name"}}
     main.put_layout(main.LayoutBody(rooms=["Kitchen", "Hall"], favorites=["zigbee:1"]))
     assert "rooms: [Kitchen, Hall]" in (tmp_path / "dashboard.yaml").read_text()
     assert not main.dashboard.changed()
     (tmp_path / "dashboard.yaml").write_text("rooms: [Hall]\nhidden: [zigbee:9]\n")
     assert main.dashboard.changed()
-    assert main._read_layout() == {"rooms": ["Hall"], "hidden": ["zigbee:9"], "favorites": [], "order": []}
+    assert main._read_layout() == {"rooms": ["Hall"], "hidden": ["zigbee:9"], "favorites": [], "order": [], "widgets": None,
+                                   "devices_view": {"group_by": "room", "sort": "name"}}
 
 
 def test_changed_settings_restart_only_their_integration(monkeypatch):
@@ -341,3 +343,23 @@ def test_new_hub_starts_with_nothing_added_and_keeps_that_after_the_wizard(files
         assert config.SETUP_DONE and integrations.added_ids() == ["none"]  # stays empty, not "whatever is set up"
     finally:
         main.store.db.execute("DELETE FROM settings WHERE key IN ('password', 'setup_started')")
+
+
+def test_dashboard_widgets_and_device_view_are_saved_cleaned_and_editable_by_hand(tmp_path, monkeypatch):
+    from homepi import main
+    monkeypatch.setattr(main, "dashboard", YamlFile(tmp_path / "dashboard.yaml"))
+    saved = main.put_layout(main.LayoutBody(
+        widgets=[{"type": "favourites"}, {"type": "sensor", "device_id": "ble:1", "key": "temperature", "hours": 9999,
+                                          "evil": "x"}, {"type": "nonsense"}, {"type": "flows", "title": "Quick"}],
+        devices_view={"group_by": "type", "sort": "recent"}))
+    assert saved["widgets"] == [{"type": "favourites"},
+                                {"type": "sensor", "device_id": "ble:1", "key": "temperature", "hours": 336},
+                                {"type": "flows", "title": "Quick"}]
+    assert saved["devices_view"] == {"group_by": "type", "sort": "recent"}
+    text = (tmp_path / "dashboard.yaml").read_text()
+    assert "widgets:" in text and "type: favourites" in text and "group_by: type" in text
+    (tmp_path / "dashboard.yaml").write_text("widgets:" + chr(10) + "  - {type: rooms}" + chr(10) + "  - {type: bogus}" + chr(10) + "devices_view: {group_by: weird}" + chr(10))
+    assert main._read_layout()["widgets"] == [{"type": "rooms"}]
+    assert main._read_layout()["devices_view"] == {"group_by": "room", "sort": "name"}
+    main.put_layout(main.LayoutBody(widgets=[]))
+    assert main._read_layout()["widgets"] == []  # an empty list is a choice: no cards

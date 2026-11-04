@@ -1,6 +1,25 @@
 import { api } from './api';
 
-export type SavedLayout = { rooms: string[]; hidden: string[]; favorites: string[]; order: string[] };
+export type Widget = {
+	type: 'status' | 'favourites' | 'rooms' | 'flows' | 'sensor';
+	title?: string;
+	/** sensor: which reading to show */
+	device_id?: string;
+	key?: string;
+	hours?: number;
+};
+export type DevicesView = { group_by: 'room' | 'type' | 'source' | 'none'; sort: 'name' | 'recent' };
+export type SavedLayout = {
+	rooms: string[];
+	hidden: string[];
+	favorites: string[];
+	order: string[];
+	/** null: the default cards */
+	widgets: Widget[] | null;
+	devices_view: DevicesView;
+};
+
+export const DEFAULT_WIDGETS: Widget[] = [{ type: 'status' }, { type: 'favourites' }, { type: 'rooms' }];
 
 /** Dashboard layout (room order, hidden and pinned devices, tile order), stored on the hub. */
 class Layout {
@@ -8,6 +27,8 @@ class Layout {
 	hidden = $state<string[]>([]);
 	favorites = $state<string[]>([]);
 	order = $state<string[]>([]);
+	widgets = $state<Widget[] | null>(null);
+	devicesView = $state<DevicesView>({ group_by: 'room', sort: 'name' });
 	editing = $state(false);
 	saving = $state(false);
 	#timer: ReturnType<typeof setTimeout> | undefined;
@@ -19,6 +40,37 @@ class Layout {
 		this.hidden = s.hidden;
 		this.favorites = s.favorites;
 		this.order = s.order;
+		this.widgets = s.widgets ?? null;
+		this.devicesView = s.devices_view ?? { group_by: 'room', sort: 'name' };
+	}
+
+	/** The cards on the dashboard, in order. */
+	get activeWidgets(): Widget[] {
+		return this.widgets ?? DEFAULT_WIDGETS;
+	}
+
+	addWidget(widget: Widget) {
+		this.widgets = [...this.activeWidgets, widget];
+		this.#save();
+	}
+
+	removeWidget(index: number) {
+		this.widgets = this.activeWidgets.filter((_, i) => i !== index);
+		this.#save();
+	}
+
+	moveWidget(index: number, delta: number) {
+		const list = [...this.activeWidgets];
+		const j = index + delta;
+		if (j < 0 || j >= list.length) return;
+		[list[index], list[j]] = [list[j], list[index]];
+		this.widgets = list;
+		this.#save();
+	}
+
+	setDevicesView(patch: Partial<DevicesView>) {
+		this.devicesView = { ...this.devicesView, ...patch };
+		this.#save();
 	}
 
 	async load() {
@@ -38,7 +90,14 @@ class Layout {
 			try {
 				await api('/layout', {
 					method: 'PUT',
-					body: { rooms: this.rooms, hidden: this.hidden, favorites: this.favorites, order: this.order }
+					body: {
+						rooms: this.rooms,
+						hidden: this.hidden,
+						favorites: this.favorites,
+						order: this.order,
+						...(this.widgets ? { widgets: this.widgets } : {}),
+						devices_view: this.devicesView
+					}
 				});
 			} finally {
 				this.saving = false;

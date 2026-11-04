@@ -375,11 +375,44 @@ def remove_area(name: str) -> list[str]:
 
 # --- dashboard layout ---------------------------------------------------
 
+# The cards the dashboard can show, in the order of dashboard.yaml. No `widgets` key means the default ones.
+WIDGET_TYPES = {"status", "favourites", "rooms", "flows", "sensor"}
+DEFAULT_WIDGETS = [{"type": "status"}, {"type": "favourites"}, {"type": "rooms"}]
+DEVICE_GROUPS = {"room", "type", "source", "none"}
+DEVICE_SORTS = {"name", "recent"}
+
+
 class LayoutBody(BaseModel):
     rooms: list[str] = Field(default_factory=list, max_length=100)
     hidden: list[str] = Field(default_factory=list, max_length=1000)
     favorites: list[str] = Field(default_factory=list, max_length=1000)
     order: list[str] = Field(default_factory=list, max_length=1000)
+    widgets: list[dict] | None = Field(default=None, max_length=50)
+    devices_view: dict | None = None
+
+
+def _clean_widgets(raw) -> list[dict] | None:
+    """Keep the widgets that are understood: a known type, with its few settings as plain text or numbers."""
+    if not isinstance(raw, list):
+        return None
+    clean = []
+    for item in raw:
+        if not isinstance(item, dict) or item.get("type") not in WIDGET_TYPES:
+            continue
+        widget = {"type": item["type"]}
+        for key in ("title", "device_id", "key"):
+            if isinstance(item.get(key), str) and item[key]:
+                widget[key] = item[key][:100]
+        if isinstance(item.get("hours"), (int, float)) and not isinstance(item.get("hours"), bool):
+            widget["hours"] = min(max(int(item["hours"]), 1), 24 * 14)
+        clean.append(widget)
+    return clean
+
+
+def _clean_devices_view(raw) -> dict:
+    raw = raw if isinstance(raw, dict) else {}
+    return {"group_by": raw.get("group_by") if raw.get("group_by") in DEVICE_GROUPS else "room",
+            "sort": raw.get("sort") if raw.get("sort") in DEVICE_SORTS else "name"}
 
 
 # The layout lives in config/dashboard.yaml, where it can be edited by hand.
@@ -398,9 +431,11 @@ def _read_layout() -> dict:
     except ValueError as err:
         log.warning("%s (using an empty layout until it is fixed)", err)
         return layout
-    for key in layout:
+    for key in ("rooms", "hidden", "favorites", "order"):
         if isinstance(saved.get(key), list):
             layout[key] = [str(item) for item in saved[key]]
+    layout["widgets"] = _clean_widgets(saved.get("widgets"))
+    layout["devices_view"] = _clean_devices_view(saved.get("devices_view"))
     return layout
 
 
@@ -411,8 +446,12 @@ def get_layout() -> dict:
 
 @app.put("/api/layout", dependencies=[Depends(require_login)])
 def put_layout(body: LayoutBody) -> dict:
-    dashboard.write(body.model_dump())
-    return body.model_dump()
+    values = body.model_dump(exclude_none=True)
+    if body.widgets is not None:
+        values["widgets"] = _clean_widgets(body.widgets) or []
+    values["devices_view"] = _clean_devices_view(body.devices_view)
+    dashboard.write(values)
+    return _read_layout()
 
 
 # --- flows --------------------------------------------------------------
