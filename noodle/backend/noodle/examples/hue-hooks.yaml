@@ -1,0 +1,18 @@
+# Only for an older setup: Hue Tap or Dimmer switches that are paired with the Hue bridge only, with a Home
+# Assistant automation that sends each press to MQTT as noodle/hook/<name> (or the older homepi/hook/<name>). Copy to config/hue-hooks.yaml.
+# Each switch becomes a device here; every forwarded name becomes a button: name: [button key, button label].
+# (With a Hue bridge paired on the Integrations page you do not need this: its switches appear by themselves.)
+hue:tap:
+  name: Hue Tap switch
+  model: Hue Tap
+  buttons:
+    tap_1: [button_1, Button 1]
+    tap_2: [button_2, Button 2]
+hue:dimmer:
+  name: Hue Dimmer switch
+  model: Hue Dimmer
+  buttons:
+    dimmer_on: [on, On]
+    dimmer_up: [up, Brighter]
+    dimmer_down: [down, Dimmer]
+    dimmer_off: [off, Off]

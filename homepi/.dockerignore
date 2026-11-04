@@ -1,8 +1,0 @@
-frontend/node_modules
-frontend/build
-frontend/.svelte-kit
-**/__pycache__
-backend/homepi/static
-backend/build
-backend/dist
-backend/*.egg-info

@@ -26,7 +26,7 @@ def mark() -> str:
 TILE = f'<rect width="32" height="32" rx="8" fill="{BG}"/>'
 
 # Web: the logo component (the house takes the text colour) and the favicon (with its background).
-(ROOT / "homepi/frontend/src/lib/Logo.svelte").write_text(f'''<script lang="ts">
+(ROOT / "noodle/frontend/src/lib/Logo.svelte").write_text(f'''<script lang="ts">
 	let {{ class: cls = 'size-6' }}: {{ class?: string }} = $props();
 </script>
 
@@ -34,7 +34,7 @@ TILE = f'<rect width="32" height="32" rx="8" fill="{BG}"/>'
 <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" class={{cls}}>{TILE}{mark()}</svg>
 ''', encoding="utf-8")
 
-(ROOT / "homepi/frontend/static/favicon.svg").write_text(
+(ROOT / "noodle/frontend/static/favicon.svg").write_text(
     f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="{BG}"/>'
     f'{mark()}</svg>\n', encoding="utf-8")
 

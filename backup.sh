@@ -4,7 +4,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 mkdir -p backups
-file="backups/pi4_docker_$(date +%Y-%m-%d_%H%M).tar.gz"
+file="backups/noodle-pi_$(date +%Y-%m-%d_%H%M).tar.gz"
 
 sudo tar -czf "$file" data .env
 sudo chown "$USER": "$file"

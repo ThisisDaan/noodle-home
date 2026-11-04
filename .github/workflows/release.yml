@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v0.2.0 (it must match __version__ in homepi/backend/homepi/__init__.py).
+# Push a tag like v0.2.0 (it must match __version__ in noodle/backend/noodle/__init__.py).
 # Publishes the Docker image to ghcr.io/<owner>/noodle and attaches the pip wheel to a GitHub release.
 on:
   push:
@@ -22,19 +22,19 @@ jobs:
 
       - name: The tag matches the version
         run: |
-          version=$(python -c "import re,pathlib;print(re.search(r'__version__ = \"(.+?)\"', pathlib.Path('homepi/backend/homepi/__init__.py').read_text()).group(1))")
+          version=$(python -c "import re,pathlib;print(re.search(r'__version__ = \"(.+?)\"', pathlib.Path('noodle/backend/noodle/__init__.py').read_text()).group(1))")
           test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME does not match version $version"; exit 1; }
 
       - name: Tests
         run: |
-          pip install -r homepi/backend/requirements-dev.txt
-          cd homepi/backend && pytest -q
+          pip install -r noodle/backend/requirements-dev.txt
+          cd noodle/backend && pytest -q
 
       - uses: oven-sh/setup-bun@v2
       - name: Wheel
         run: |
           pip install build
-          ./homepi/build-wheel.sh
+          ./noodle/build-wheel.sh
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -55,7 +55,7 @@ jobs:
 
       - uses: docker/build-push-action@v6
         with:
-          context: ./homepi
+          context: ./noodle
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -63,5 +63,5 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: homepi/backend/dist/*.whl
+          files: noodle/backend/dist/*.whl
           generate_release_notes: true

@@ -2,14 +2,14 @@
 data/
 backups/
 ha.env
-homepi/frontend/node_modules/
-homepi/frontend/build/
-homepi/frontend/.svelte-kit/
+noodle/frontend/node_modules/
+noodle/frontend/build/
+noodle/frontend/.svelte-kit/
 __pycache__/
-homepi/backend/homepi/static/
-homepi/backend/build/
-homepi/backend/dist/
-homepi/backend/*.egg-info/
+noodle/backend/noodle/static/
+noodle/backend/build/
+noodle/backend/dist/
+noodle/backend/*.egg-info/
 
 # Android / Python caches
 noodle-android/Noodle.apk

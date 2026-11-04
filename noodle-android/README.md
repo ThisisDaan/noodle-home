@@ -1,9 +1,9 @@
 # Noodle for Android
 
-Native client for the homepi/Noodle server on the Pi. Replaces the Home Assistant companion app.
+Native client for the noodle/Noodle server on the Pi. Replaces the Home Assistant companion app.
 
 - Live device list by room over `/api/ws` (no polling); toggle lights/switches, dim, change the thermostat target.
-- The phone shows up in Noodle as a device (`phone:<id>`): battery, charging and a **Home** presence sensor (within 150 m of `HOMEPI_LAT`/`HOMEPI_LON`). Use it in flows like any sensor.
+- The phone shows up in Noodle as a device (`phone:<id>`): battery, charging and a **Home** presence sensor (within 150 m of `NOODLE_LAT`/`NOODLE_LON`). Use it in flows like any sensor.
 - Login trades the password once for a long-lived token (`POST /api/auth/app`); the password is not stored.
 
 ## Build

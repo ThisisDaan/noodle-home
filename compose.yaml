@@ -13,7 +13,7 @@ services:
     image: koenkk/zigbee2mqtt:2.7.1
     container_name: zigbee2mqtt
     labels:
-      homepi.webui: "8081"   # the link on Noodle's System page
+      noodle.webui: "8081"   # the link on Noodle's System page
     depends_on:
       - mosquitto
     environment:
@@ -31,7 +31,7 @@ services:
     image: ghcr.io/home-assistant/home-assistant:stable
     container_name: homeassistant
     labels:
-      homepi.webui: "8123"   # the link on Noodle's System page
+      noodle.webui: "8123"   # the link on Noodle's System page
     environment:
       - TZ=${TZ}
     volumes:
@@ -48,7 +48,7 @@ services:
     image: ghcr.io/ownbee/hass-otbr-docker:latest
     container_name: otbr
     labels:
-      homepi.webui: "7586"   # the link on Noodle's System page
+      noodle.webui: "7586"   # the link on Noodle's System page
     environment:
       - DEVICE=/dev/ttyOTBR
       - BAUDRATE=460800
@@ -75,7 +75,7 @@ services:
   matter-server:
     image: ghcr.io/home-assistant-libs/python-matter-server:stable
     container_name: matter-server
-    # --bluetooth-adapter 0: homepi pairs new Matter devices over the Pi's Bluetooth (hci0).
+    # --bluetooth-adapter 0: noodle pairs new Matter devices over the Pi's Bluetooth (hci0).
     command: --storage-path /data --paa-root-cert-dir /data/credentials --primary-interface ${THREAD_BACKBONE_IF} --bluetooth-adapter 0
     volumes:
       - ./data/matter-server:/data
@@ -86,23 +86,23 @@ services:
       - apparmor:unconfined
     restart: unless-stopped
 
-  # homepi: web interface and API for Zigbee, Matter, Thread and the containers.
+  # noodle: web interface and API for Zigbee, Matter, Thread and the containers.
   # http://noodle.local (port 80) or http://<pi-ip>:8090. The Docker socket lets it show, restart and read logs of containers.
-  homepi:
-    build: ./homepi
-    container_name: homepi
+  noodle:
+    build: ./noodle
+    container_name: noodle
     labels:
-      homepi.webui: "8090"   # the link on Noodle's System page
+      noodle.webui: "8090"   # the link on Noodle's System page
     environment:
       - NTFY_TOPIC=${NTFY_TOPIC:-}
       - BLE_SENSORS=${BLE_SENSORS:-}
-      - HOMEPI_URL=${HOMEPI_URL:-}   # how phones reach the hub, e.g. http://192.168.1.10 (for notification buttons); also settable in the app
+      - NOODLE_URL=${NOODLE_URL:-}   # how phones reach the hub, e.g. http://192.168.1.10 (for notification buttons); also settable in the app
       - TZ=${TZ}
     depends_on:
       - mosquitto
       - matter-server
     volumes:
-      - ./data/homepi:/data
+      - ./data/noodle:/data
       - /etc/localtime:/etc/localtime:ro
       - /run/dbus:/run/dbus:ro   # Bluetooth (BlueZ) for the Xiaomi room sensor
       - /var/run/docker.sock:/var/run/docker.sock
@@ -143,7 +143,7 @@ services:
     image: lscr.io/linuxserver/unifi-network-application:latest
     container_name: unifi
     labels:
-      homepi.webui: "https:8443"   # the link on Noodle's System page
+      noodle.webui: "https:8443"   # the link on Noodle's System page
     profiles: ["unifi"]
     depends_on:
       - unifi-db

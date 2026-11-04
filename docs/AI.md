@@ -14,7 +14,7 @@ A flow whose id already exists is only replaced if you say so, and the replaceme
 
 ## From the command line or an AI coding tool
 
-Flows live in `<data>/config/flows/*.yaml` (in Docker: `data/homepi/config/flows/`). The hub reloads a file within a couple of seconds.
+Flows live in `<data>/config/flows/*.yaml` (in Docker: `data/noodle/config/flows/`). The hub reloads a file within a couple of seconds.
 
 ```bash
 noodle schema                 # JSON Schema of the format (with the integrations you have installed)
