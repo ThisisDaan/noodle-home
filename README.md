@@ -50,17 +50,17 @@ Everything below is the full Raspberry Pi stack this project started as: Mosquit
 
 ## Restoring your old setup
 
-The `backups/` folder (git-ignored) holds the old setup. Its files already match this compose file, so they can be dropped in as they are. Do this on the Pi after `install.sh` has run once:
+If you already have a Zigbee2MQTT or Home Assistant setup, put its data in `backups/` (git-ignored) and copy it in after `install.sh` has run once, on the Pi:
 
 ```bash
 docker compose down
-cp -a backups/z2m-backup.*/{configuration.yaml,database.db,coordinator_backup.json} data/zigbee2mqtt/
-sudo cp -a backups/automatic_backup_2025_12_3/homeassistant/data/. data/homeassistant/
+cp -a backups/<zigbee2mqtt backup>/{configuration.yaml,database.db,coordinator_backup.json} data/zigbee2mqtt/
+sudo cp -a backups/<home assistant backup>/data/. data/homeassistant/
 docker compose up -d
 ```
 
-- **Zigbee2MQTT:** the old config already uses `mqtt://mosquitto:1883`, port 8080 and the zstack adapter. Compose maps your stick to `/dev/ttyUSB0`, which is what that config expects.
-- **Home Assistant:** the backup is an unprotected, extracted `/config` folder, so no restore wizard or encryption key is needed. Its MQTT integration points at `192.168.1.104:1883`, so **give the Pi that same IP** (fixed IP in your router) and it connects with no changes.
+- **Zigbee2MQTT:** its config should use `mqtt://mosquitto:1883`, and your stick is mapped to `/dev/ttyUSB0` by compose (the `zstack` adapter setting must match your stick).
+- **Home Assistant:** an unprotected, extracted `/config` folder needs no restore wizard. If its MQTT integration points at an IP address, give the Pi that same IP (a fixed address in your router) or change it in Home Assistant.
 - `install.sh` sets `ZIGBEE_DEVICE` in `.env` to your stick's stable path from `ls /dev/serial/by-id/`. If you have several USB devices, set it by hand.
 
 After the first login a short setup wizard asks for your home's name and location, which services you use, and helps pair a first device. Every step can be skipped, and hubs that were set up before the wizard existed never see it.
@@ -115,7 +115,7 @@ Develop locally against the Pi: run the backend with `MQTT_HOST=<pi-ip> MATTER_U
 
 ## Optional: UniFi controller
 
-Your U6 Pro needs a controller. `install.sh` generates the database passwords in `.env`, then:
+A UniFi access point needs a controller. `install.sh` generates the database passwords in `.env`, then:
 
 ```bash
 docker compose --profile unifi up -d
@@ -199,3 +199,7 @@ PLUGIN = MyThingPlugin()
 ```
 
 Optional hooks: `preset()` (already set up counts as added), `routes()` (own API endpoints), `details()` and `panel` (extra panel on the page, a component listed in `frontend/src/lib/integrations/panels.ts`), `system_info()` (shown on the System page), `forget` and `on_remove()` (cleanup when removed). Add the setting keys to `SETTINGS` in `config.py` with the plugin id as section. The tests in `homepi/backend/tests` check that the pieces agree (`pip install -r requirements-dev.txt`, then `pytest`).
+
+## Licence
+
+Noodle is free software under the [GNU General Public License v3.0 or later](LICENSE): you may use, study, change and share it, and anyone who shares a modified version must share it under the same licence, so it stays open for everyone. Contributions are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md).

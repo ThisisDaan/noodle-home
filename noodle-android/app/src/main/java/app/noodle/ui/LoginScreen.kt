@@ -27,7 +27,7 @@ import app.noodle.NoodleViewModel
 
 @Composable
 fun LoginScreen(vm: NoodleViewModel) {
-    var url by rememberSaveable { mutableStateOf(vm.prefs.baseUrl.ifEmpty { "http://192.168.1.104:8090" }) }
+    var url by rememberSaveable { mutableStateOf(vm.prefs.baseUrl.ifEmpty { "http://noodle.local" }) }
     var password by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf(vm.prefs.phoneName) }
     val busy by vm.busy.collectAsState()
