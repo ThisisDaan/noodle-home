@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
-from .adapters.hue import BUTTONS as HUE_BUTTONS
+from .adapters.hue import legacy_buttons
 from .flows import FlowEngine
 
 
 def adopt_hue_buttons(engine: FlowEngine) -> None:
-    """Hue presses used to arrive in flows as "Notification button" triggers named e.g. boven_hue.
+    """Hue presses used to arrive in flows as "Notification button" triggers named after the switch button.
     Turn those into "Button pressed" on the Hue switch, keeping the node and its connections."""
+    hue_buttons = legacy_buttons()
+    if not hue_buttons:
+        return
     for flow in engine.flows.values():
         changed = False
         for node in flow["graph"].get("nodes", []):
             name = node.get("data", {}).get("name")
-            if node.get("type") == "trigger.webhook" and name in HUE_BUTTONS:
-                device_id, key = HUE_BUTTONS[name]
+            if node.get("type") == "trigger.webhook" and name in hue_buttons:
+                device_id, key = hue_buttons[name]
                 node["type"], node["data"] = "trigger.event", {"device_id": device_id, "outputs": [f"{key}:press"]}
                 for e in flow["graph"].get("edges", []):
                     if e.get("source") == node["id"]:

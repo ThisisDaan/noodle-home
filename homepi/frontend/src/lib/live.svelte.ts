@@ -9,7 +9,8 @@ export type FlowIssues = Record<string, { errors: string[]; warnings: string[] }
 export type HistoryRow = { device_id: string; key: string; ts: number; value: boolean | number | string | null };
 
 type Message =
-	| { type: 'snapshot'; devices: Device[]; areas: string[]; flow_issues?: FlowIssues }
+	| { type: 'snapshot'; devices: Device[]; areas: string[]; flow_issues?: FlowIssues; home_name?: string }
+	| { type: 'home'; name: string }
 	| { type: 'flow_files'; issues: FlowIssues }
 	| { type: 'areas'; areas: string[] }
 	| { type: 'layout'; layout: SavedLayout }
@@ -27,6 +28,8 @@ class Live {
 	devices = $state<Record<string, Device>>({});
 	areas = $state<string[]>([]);
 	flows = $state<FlowSummary[] | null>(null);
+	/** What the household called its home in the setup (empty until then). */
+	homeName = $state('');
 	/** Problems found in flow files that were edited by hand (file name -> errors and warnings). */
 	flowIssues = $state<FlowIssues>({});
 	variables = $state<Variables | null>(null);
@@ -72,6 +75,9 @@ class Live {
 				this.devices = Object.fromEntries(msg.devices.map((d) => [d.id, d]));
 				this.areas = msg.areas;
 				this.flowIssues = msg.flow_issues ?? {};
+				this.homeName = msg.home_name ?? '';
+			} else if (msg.type === 'home') {
+				this.homeName = msg.name;
 			} else if (msg.type === 'flow_files') {
 				this.flowIssues = msg.issues;
 			} else if (msg.type === 'areas') {

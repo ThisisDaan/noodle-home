@@ -19,7 +19,6 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import aicontext, config, flowfiles, integrations, notify, plugins
 from .flows import FlowEngine
 from .migrations import adopt_hue_buttons
-from .plugins.thermostat import migrate_from_fixed_devices
 from .hub import Hub
 from .store import Store
 from .yamlfile import YamlFile
@@ -28,7 +27,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("homepi")
 
 store = Store(config.DATA_DIR / "homepi.db")
-migrate_from_fixed_devices(store)
 hub = Hub(store)
 PLUGINS = plugins.discover()
 ADAPTERS = {p.source: p.create_adapter(hub) for p in PLUGINS if p.source}  # by source, e.g. "zigbee"
@@ -674,6 +672,8 @@ async def save_integration(integration_id: str, body: SettingsBody) -> dict:
         config.save(values)
     except ValueError as err:
         raise HTTPException(400, f"One of the values is not valid: {err}")
+    if "home_name" in values:
+        hub.broadcast({"type": "home", "name": config.HOME_NAME})  # the sidebar and page title update
     if item.adapter:
         await restart_adapter(item.adapter)
         await asyncio.sleep(2.5)  # give it a moment to connect, so the answer shows the result
@@ -754,7 +754,8 @@ async def live(ws: WebSocket) -> None:
     if is_app:
         _app_clients += 1
     await ws.send_json({"type": "snapshot", "devices": [d.as_dict() for d in hub.devices.values()],
-                        "areas": store.areas(), "flow_issues": flows.file_issues})
+                        "areas": store.areas(), "flow_issues": flows.file_issues,
+                        "home_name": config.HOME_NAME})
 
     async def send(message: dict) -> None:
         await ws.send_json(message)

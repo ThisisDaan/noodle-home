@@ -20,12 +20,6 @@ log = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS areas (name TEXT PRIMARY KEY, position INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE IF NOT EXISTS device_meta (
-    device_id TEXT PRIMARY KEY,
-    name TEXT,
-    area TEXT
-);
 -- Since when an entity has had its current state; survives restarts, so
 -- "on for 2 hours" rules keep counting.
 CREATE TABLE IF NOT EXISTS entity_since (
@@ -47,13 +41,6 @@ CREATE TABLE IF NOT EXISTS history (
     value TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS history_device ON history (device_id, ts);
-CREATE TABLE IF NOT EXISTS automations (
-    id TEXT PRIMARY KEY,
-    enabled INTEGER NOT NULL,
-    last_triggered REAL,
-    last_action REAL,
-    last_error TEXT
-);
 """
 
 
@@ -126,11 +113,13 @@ class Store:
             except ValueError as err:
                 log.warning("%s (using the last saved rooms until it is fixed)", err)
                 self._broken = True
-        # First start with files: bring over what the database held.
-        self._areas = [r["name"] for r in self.db.execute("SELECT name FROM areas ORDER BY position, name")] \
-            or list(config.DEFAULT_AREAS)
-        self._meta = {r["device_id"]: {"name": r["name"], "area": r["area"]}
-                      for r in self.db.execute("SELECT device_id, name, area FROM device_meta")}
+        # First start with files: bring over what an older database held (its tables are not created any more).
+        tables = {r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        self._areas = ([r["name"] for r in self.db.execute("SELECT name FROM areas ORDER BY position, name")]
+                       if "areas" in tables else []) or list(config.DEFAULT_AREAS)
+        self._meta = ({r["device_id"]: {"name": r["name"], "area": r["area"]}
+                       for r in self.db.execute("SELECT device_id, name, area FROM device_meta")}
+                      if "device_meta" in tables else {})
         if not self._broken:
             self._write_areas()
 
@@ -274,20 +263,3 @@ class Store:
             token = secrets.token_urlsafe(24)
             self.set("hook_token", token)
         return token
-
-    # automations
-    def automation(self, automation_id: str) -> dict | None:
-        row = self.db.execute("SELECT * FROM automations WHERE id = ?", (automation_id,)).fetchone()
-        return dict(row) if row else None
-
-    def save_automation(self, automation_id: str, **fields) -> None:
-        current = self.automation(automation_id) or {"enabled": 1, "last_triggered": None,
-                                                     "last_action": None, "last_error": None}
-        current.update(fields)
-        self.db.execute(
-            "INSERT OR REPLACE INTO automations (id, enabled, last_triggered, last_action, last_error) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (automation_id, int(current["enabled"]), current["last_triggered"], current["last_action"],
-             current["last_error"]),
-        )
-        self.db.commit()

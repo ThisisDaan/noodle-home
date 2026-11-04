@@ -12,6 +12,8 @@ services:
   zigbee2mqtt:
     image: koenkk/zigbee2mqtt:2.7.1
     container_name: zigbee2mqtt
+    labels:
+      homepi.webui: "8081"   # the link on Noodle's System page
     depends_on:
       - mosquitto
     environment:
@@ -28,6 +30,8 @@ services:
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     container_name: homeassistant
+    labels:
+      homepi.webui: "8123"   # the link on Noodle's System page
     environment:
       - TZ=${TZ}
     volumes:
@@ -43,6 +47,8 @@ services:
   otbr:
     image: ghcr.io/ownbee/hass-otbr-docker:latest
     container_name: otbr
+    labels:
+      homepi.webui: "7586"   # the link on Noodle's System page
     environment:
       - DEVICE=/dev/ttyOTBR
       - BAUDRATE=460800
@@ -85,6 +91,8 @@ services:
   homepi:
     build: ./homepi
     container_name: homepi
+    labels:
+      homepi.webui: "8090"   # the link on Noodle's System page
     environment:
       - NTFY_TOPIC=${NTFY_TOPIC:-}
       - BLE_SENSORS=${BLE_SENSORS:-}
@@ -134,6 +142,8 @@ services:
   unifi:
     image: lscr.io/linuxserver/unifi-network-application:latest
     container_name: unifi
+    labels:
+      homepi.webui: "https:8443"   # the link on Noodle's System page
     profiles: ["unifi"]
     depends_on:
       - unifi-db

@@ -117,3 +117,10 @@ def test_file_problems_reach_open_pages(client, tmp_path):
 def test_device_warnings_helper():
     flow = {"graph": {"nodes": [{"id": "n", "data": {"device_id": "zigbee:zzz", "key": "k"}}]}}
     assert aicontext.device_warnings(flow, main.hub) == ["node n: no device 'zigbee:zzz' on this hub"]
+
+
+def test_home_name_is_in_the_live_snapshot_and_changes_are_pushed(client, monkeypatch):
+    monkeypatch.setattr(config, "HOME_NAME", "Our house")
+    with client.websocket_connect("/api/ws") as ws:
+        snapshot = ws.receive_json()
+        assert snapshot["type"] == "snapshot" and snapshot["home_name"] == "Our house"

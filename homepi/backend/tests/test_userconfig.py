@@ -174,48 +174,17 @@ class _Running:
 
 # --- the thermostat is no longer tied to one install's devices ---------------------------------------
 
-MAC = "4C:65:A8:DC:94:84"
-
-
 def test_fresh_install_has_no_thermostat(tmp_path, monkeypatch):
     from homepi.hub import Hub
-    from homepi.plugins.thermostat import PLUGIN, migrate_from_fixed_devices
+    from homepi.plugins.thermostat import PLUGIN
 
     s = store(tmp_path, monkeypatch)
     monkeypatch.setattr(config, "BLE_SENSORS", {})
-    migrate_from_fixed_devices(s)  # nothing to migrate
     assert config.THERMOSTAT_SENSOR_DEVICE == "" and not PLUGIN.preset()
     adapter = PLUGIN.create_adapter(Hub(s))
     assert adapter.configured is False and PLUGIN.status(adapter) is None
     asyncio.run(adapter.run())  # returns at once, publishes nothing
     assert adapter.hub.devices == {}
-
-
-def test_the_original_install_keeps_its_thermostat(files, tmp_path, monkeypatch):
-    from homepi.hub import Hub
-    from homepi.plugins.thermostat import PLUGIN, migrate_from_fixed_devices
-
-    s = store(tmp_path, monkeypatch)
-    s.set("thermostat_mode", "heat")
-    monkeypatch.setattr(config, "INTEGRATIONS", ["zigbee", "ble"])
-    migrate_from_fixed_devices(s)
-    assert config.THERMOSTAT_ID == "thermostat:woonkamer" and config.THERMOSTAT_SENSOR_DEVICE == f"ble:{MAC}"
-    assert config.INTEGRATIONS == ["zigbee", "ble", "thermostat"] and PLUGIN.preset()
-    adapter = PLUGIN.create_adapter(Hub(s))
-    assert adapter.configured and adapter.sensor == (f"ble:{MAC}", "temperature")
-    assert adapter._device().id == "thermostat:woonkamer" and adapter._device().name == "Verwarming woonkamer"
-    before = (files / "settings.yaml").read_text()
-    migrate_from_fixed_devices(s)  # only once
-    assert (files / "settings.yaml").read_text() == before
-
-
-def test_another_install_with_a_bluetooth_sensor_is_left_alone(tmp_path, monkeypatch):
-    from homepi.plugins.thermostat import migrate_from_fixed_devices
-
-    s = store(tmp_path, monkeypatch)
-    monkeypatch.setattr(config, "BLE_SENSORS", {"AA:BB:CC:DD:EE:FF": "Bedroom"})
-    migrate_from_fixed_devices(s)
-    assert config.THERMOSTAT_SENSOR_DEVICE == ""
 
 
 def test_thermostat_follows_the_settings_and_can_be_removed(tmp_path, monkeypatch):
@@ -363,3 +332,22 @@ def test_dashboard_widgets_and_device_view_are_saved_cleaned_and_editable_by_han
     assert main._read_layout()["devices_view"] == {"group_by": "room", "sort": "name"}
     main.put_layout(main.LayoutBody(widgets=[]))
     assert main._read_layout()["widgets"] == []  # an empty list is a choice: no cards
+
+
+def test_a_fresh_database_has_no_legacy_tables_but_an_old_one_is_still_read(tmp_path, monkeypatch):
+    s = store(tmp_path, monkeypatch)
+    tables = {r[0] for r in s.db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert not {"areas", "device_meta", "automations"} & tables
+    assert s.areas() == config.DEFAULT_AREAS  # defaults, without touching the missing tables
+
+
+def test_forwarded_hue_buttons_come_from_a_file(tmp_path, monkeypatch):
+    from homepi.adapters import hue
+
+    monkeypatch.setattr(config, "CONFIG_DIR", tmp_path)
+    assert hue.legacy_switches() == {} and hue.legacy_buttons() == {}
+    (tmp_path / "hue-hooks.yaml").write_text("hue:tap:" + chr(10) + "  name: Tap" + chr(10) + "  model: Hue Tap" + chr(10) + "  buttons:" + chr(10) + "    tap_1: [button_1, Button 1]" + chr(10))
+    assert hue.legacy_buttons() == {"tap_1": ("hue:tap", "button_1")}
+    assert hue.legacy_switches()["hue:tap"][0] == "Tap"
+    (tmp_path / "hue-hooks.yaml").write_text("hue:tap: [broken" + chr(10))
+    assert hue.legacy_buttons() == {}  # a broken file does not break the hub

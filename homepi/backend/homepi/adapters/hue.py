@@ -5,7 +5,7 @@ Two ways in, both optional:
   and light sensor on the bridge becomes a device here, live over the bridge's event stream (API v2).
 - Older setup: Hue Tap and Hue Dimmer switches that stay paired with the bridge only; a Home Assistant
   automation "Hue | Forward to homepi" sends each press as MQTT homepi/hook/<name>. Those names become buttons
-  on two devices, so flows use them with "Button pressed" like any other button.
+  on devices described in config/hue-hooks.yaml (see examples/hue-hooks.yaml), so flows use them with "Button pressed" like any other button.
 """
 
 from __future__ import annotations
@@ -19,27 +19,48 @@ import httpx
 
 from .. import config
 from ..hub import Device, Entity, Hub
+from ..yamlfile import YamlFile
 
 log = logging.getLogger(__name__)
 
-# device id -> (name, model, {forwarded name: (button key, button name)})
-SWITCHES = {
-    "hue:tap": ("Hue Tap switch", "Hue Tap", {
-        "boven_hue": ("button_1", "Button 1"),
-        "woonkamer_hue": ("button_2", "Button 2"),
-        "beneden_hue": ("button_3", "Button 3"),
-        "keuken_hue": ("button_4", "Button 4"),
-    }),
-    "hue:dimmer": ("Hue Dimmer switch", "Hue Dimmer", {
-        "woonkamer_dimmer_on": ("on", "On"),
-        "woonkamer_dimmer_up": ("up", "Brighter"),
-        "woonkamer_dimmer_down": ("down", "Dimmer"),
-        "woonkamer_dimmer_off": ("off", "Off"),
-    }),
-}
-# forwarded name -> (device id, button key)
-BUTTONS = {name: (device_id, key) for device_id, (_, _, buttons) in SWITCHES.items()
-           for name, (key, _) in buttons.items()}
+def _parse_legacy(path, stamp) -> dict:
+    try:
+        doc = YamlFile(path).read()
+    except ValueError as err:
+        log.warning("%s (no forwarded Hue buttons until it is fixed)", err)
+        return {}
+    out = {}
+    for device_id, spec in doc.items():
+        if not isinstance(spec, dict):
+            continue
+        buttons = {str(hook): (str(v[0]), str(v[1])) for hook, v in (spec.get("buttons") or {}).items()
+                   if isinstance(v, (list, tuple)) and len(v) == 2}
+        out[str(device_id)] = (str(spec.get("name") or device_id), str(spec.get("model") or "Hue switch"), buttons)
+    return out
+
+
+_legacy_cache: tuple = (None, {})
+
+
+def legacy_switches() -> dict:
+    """device id -> (name, model, {forwarded name: (button key, button name)}) for the older setup (see the module
+    docstring), read from config/hue-hooks.yaml. Without that file there are none."""
+    global _legacy_cache
+    path = config.CONFIG_DIR / "hue-hooks.yaml"
+    try:
+        stamp = path.stat().st_mtime_ns
+    except OSError:
+        return {}
+    if _legacy_cache[0] != (path, stamp):
+        _legacy_cache = ((path, stamp), _parse_legacy(path, stamp))
+    return _legacy_cache[1]
+
+
+def legacy_buttons() -> dict:
+    """forwarded name -> (device id, button key)"""
+    return {name: (device_id, key) for device_id, (_, _, buttons) in legacy_switches().items()
+            for name, (key, _) in buttons.items()}
+
 
 # What the bridge calls a button press -> what flows see.
 PRESSES = {"short_release": "press", "long_press": "hold"}
@@ -115,7 +136,7 @@ class HueAdapter:
         self.light_ids: dict[str, str] = {}  # homepi device id -> bridge light id
 
     async def run(self) -> None:
-        for device_id, (name, model, buttons) in SWITCHES.items() if config.HUE_HOST and config.HUE_KEY else ():  # only with a bridge
+        for device_id, (name, model, buttons) in legacy_switches().items():
             self.hub.upsert(Device(id=device_id, source=self.source, name=name, model=model,
                                    manufacturer="Philips Hue", entities={
                                        key: Entity(key, "button", label, actions=["press"]) for key, label in buttons.values()}))
@@ -250,9 +271,10 @@ class HueAdapter:
 
     def press(self, name: str) -> bool:
         """Handle a forwarded press; False when the name is not a Hue button (e.g. a phone notification button)."""
-        if name not in BUTTONS:
+        buttons = legacy_buttons()
+        if name not in buttons:
             return False
-        device_id, key = BUTTONS[name]
+        device_id, key = buttons[name]
         device = self.hub.devices.get(device_id)
         if device:
             device.entities[key].state = "press"

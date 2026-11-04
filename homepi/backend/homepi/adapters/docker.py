@@ -20,6 +20,7 @@ def _client() -> httpx.AsyncClient:
 
 # Web interfaces of containers that run on the host network (Docker cannot list their ports). A container can
 # also say where its interface is with a label in compose.yaml: `homepi.webui: "8123"` or `"https:8443"`.
+# The names below are only a fallback for containers started before they had that label (compose.yaml has them now).
 WEB_UIS = {"homeassistant": "8123", "zigbee2mqtt": "8081", "homepi": "8090", "otbr": "7586", "unifi": "https:8443"}
 
 

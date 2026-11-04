@@ -65,6 +65,8 @@
 	});
 </script>
 
+<svelte:head><title>{live.homeName ? `${live.homeName} · Noodle` : 'Noodle'}</title></svelte:head>
+
 {#if status === null}
 	<div class="flex min-h-screen items-center justify-center">
 		<span class="loading loading-spinner loading-lg text-primary"></span>
@@ -104,7 +106,7 @@
 	<aside class="bg-base-100/80 border-base-content/10 fixed inset-y-0 left-0 z-20 hidden w-60 flex-col gap-1 border-r p-4 backdrop-blur lg:flex">
 		<a href="/" class="mb-6 flex items-center gap-3 px-1">
 			<Logo class="size-10" />
-			<span class="text-lg font-bold tracking-tight">Noodle</span>
+			<span class="min-w-0 truncate text-lg font-bold tracking-tight">{live.homeName || 'Noodle'}</span>
 		</a>
 		{#each links as link (link.href)}
 			<a href={link.href} class="nav-link" class:active={isActive(link.href)} aria-current={isActive(link.href) ? 'page' : undefined}>
@@ -120,7 +122,7 @@
 
 	<header class="bg-base-100/80 border-base-content/10 sticky top-0 z-10 flex items-center gap-3 border-b px-4 py-2.5 backdrop-blur lg:hidden">
 		<Logo class="size-9" />
-		<span class="grow text-lg font-bold tracking-tight">Noodle</span>
+		<span class="min-w-0 grow truncate text-lg font-bold tracking-tight">{live.homeName || 'Noodle'}</span>
 		<span class="status" class:status-success={live.connected} class:status-warning={!live.connected}></span>
 		<button class="btn btn-ghost btn-sm btn-square" onclick={logout} aria-label="Log out"><Icon name="logout" /></button>
 	</header>

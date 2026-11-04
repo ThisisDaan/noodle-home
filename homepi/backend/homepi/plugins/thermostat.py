@@ -1,12 +1,8 @@
 """A thermostat device: a room temperature sensor and a heater plug, picked on the Integrations page."""
 
-import logging
-
 from .. import config
 from ..adapters.thermostat import ThermostatAdapter
 from .base import Field, Plugin
-
-log = logging.getLogger(__name__)
 
 
 class ThermostatPlugin(Plugin):
@@ -39,18 +35,3 @@ class ThermostatPlugin(Plugin):
 
 
 PLUGIN = ThermostatPlugin()
-
-
-def migrate_from_fixed_devices(store) -> None:
-    """One time, for the install this hub was first written for: the thermostat used to be fixed to one sensor and
-    one plug in the code. Write those into the settings so it keeps working. Delete this once that hub has upgraded."""
-    mac = "4C:65:A8:DC:94:84"
-    if config.THERMOSTAT_SENSOR_DEVICE or not (store.get("thermostat_mode") is not None or mac in config.BLE_SENSORS):
-        return
-    values = {"thermostat_id": "thermostat:woonkamer", "thermostat_name": "Verwarming woonkamer",
-              "thermostat_sensor_device": f"ble:{mac}", "thermostat_sensor_key": "temperature",
-              "thermostat_heater_device": "zigbee:0xa4c1386c2b42034c", "thermostat_heater_key": "switch"}
-    if config.INTEGRATIONS and PLUGIN.id not in config.INTEGRATIONS:  # the user already picks what to add
-        values["integrations"] = ",".join([*config.INTEGRATIONS, PLUGIN.id])
-    config.save(values)
-    log.info("thermostat settings written from the fixed devices it used before")
