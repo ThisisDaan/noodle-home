@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -r homepi/backend/requirements-dev.txt
+      - run: pytest -q
+        working-directory: homepi/backend
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: homepi/frontend
+      - run: bun run check
+        working-directory: homepi/frontend
+      - run: bun run build
+        working-directory: homepi/frontend
+
+  package:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: oven-sh/setup-bun@v2
+      - run: pip install build
+      - run: ./homepi/build-wheel.sh
+      - name: The wheel installs and runs
+        run: |
+          python -m venv /tmp/noodle-venv
+          /tmp/noodle-venv/bin/pip install homepi/backend/dist/*.whl
+          /tmp/noodle-venv/bin/noodle --version
+          /tmp/noodle-venv/bin/noodle schema > /dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: homepi/backend/dist/*.whl
+      - name: The Docker image builds
+        run: docker build ./homepi

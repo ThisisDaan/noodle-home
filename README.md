@@ -15,6 +15,8 @@ docker compose up -d --build
 
 Open `http://<this machine>:8090`. Your data and settings are in `homepi/data/` (flows are plain files in `data/config/flows/`).
 
+**From a published image** (once a release is tagged, the CI workflow pushes `ghcr.io/<owner>/noodle`): in `homepi/compose.yaml` replace `build: .` with `image: ghcr.io/<owner>/noodle:latest`.
+
 **With pip** (Python 3.11 or newer):
 
 ```bash
