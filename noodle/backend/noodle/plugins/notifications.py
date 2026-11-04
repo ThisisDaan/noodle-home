@@ -22,7 +22,7 @@ class NotificationsPlugin(Plugin):
 
     def nodes(self):
         return [Node(
-            "action.notify", "Notify phone", "action", run_notify, icon="bell", summary="{title}: {message}",
+            "action.notify", "Notify", "action", run_notify, icon="bell", summary="{title}: {message}",
             defaults={"service": "all", "title": "Noodle", "message": "Something happened", "priority": "default",
                       "buttons": []},
             fields=[

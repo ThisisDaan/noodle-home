@@ -232,6 +232,12 @@ class CommandBody(BaseModel):
     brightness: int | None = Field(default=None, ge=0, le=100)
     toggle: bool = False
     value: float | None = None
+    # Kind-specific commands (capabilities.py)
+    color_temp: int | None = None  # kelvin
+    color: dict | None = None  # {"h": 0-360, "s": 0-100}
+    position: float | None = None  # covers, 0-100
+    action: str | None = None  # covers: open, close, stop. locks: lock, unlock
+    mode: str | None = None  # fans and thermostats
 
 
 class MetaBody(BaseModel):
@@ -250,7 +256,9 @@ async def command(device_id: str, key: str, body: CommandBody) -> dict:
     if device_id not in hub.devices or key not in hub.devices[device_id].entities:
         raise HTTPException(404, "Unknown device or entity")
     try:
-        await hub.command(device_id, key, on=body.on, brightness=body.brightness, toggle=body.toggle, value=body.value)
+        await hub.command(device_id, key, on=body.on, brightness=body.brightness, toggle=body.toggle, value=body.value,
+                          color_temp=body.color_temp, color=body.color, position=body.position, action=body.action,
+                          mode=body.mode)
     except (RuntimeError, ValueError) as err:
         raise HTTPException(400, str(err))
     return {"ok": True}

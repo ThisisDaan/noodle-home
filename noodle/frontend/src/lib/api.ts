@@ -1,6 +1,6 @@
 export type Entity = {
 	key: string;
-	kind: 'light' | 'switch' | 'binary_sensor' | 'sensor' | 'button' | 'number';
+	kind: 'light' | 'switch' | 'fan' | 'cover' | 'lock' | 'climate' | 'binary_sensor' | 'sensor' | 'button' | 'number';
 	name: string;
 	state: boolean | number | string | null;
 	brightness: number | null;
@@ -10,11 +10,13 @@ export type Entity = {
 	actions?: string[] | null;
 	/** Inputs that belong together, e.g. one profile of a remote. */
 	group?: string | null;
+	/** Extra readings by kind: colour, cover position, thermostat modes (backend capabilities.py). */
+	attrs?: Record<string, any>;
 };
 
 export type Device = {
 	id: string;
-	source: 'zigbee' | 'matter' | 'ble' | 'thermostat' | 'hue' | 'group';
+	source: 'zigbee' | 'matter' | 'ble' | 'thermostat' | 'hue' | 'lifx' | 'group';
 	name: string;
 	model: string | null;
 	manufacturer: string | null;
@@ -54,10 +56,23 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
 	return res.json() as Promise<T>;
 }
 
-export const command = (device: Device, entity: Entity, body: { on?: boolean; brightness?: number; toggle?: boolean; value?: number }) =>
+export type CommandBody = {
+	on?: boolean;
+	brightness?: number;
+	toggle?: boolean;
+	value?: number;
+	color_temp?: number;
+	color?: { h: number; s: number };
+	position?: number;
+	action?: 'open' | 'close' | 'stop' | 'lock' | 'unlock';
+	mode?: string;
+};
+
+export const command = (device: Device, entity: Entity, body: CommandBody) =>
 	api(`/devices/${encodeURIComponent(device.id)}/entities/${encodeURIComponent(entity.key)}`, { body });
 
-export const controllable = (e: Entity) => e.kind === 'light' || e.kind === 'switch' || e.kind === 'number';
+export const CONTROLLABLE = ['light', 'switch', 'fan', 'cover', 'lock', 'climate', 'number'];
+export const controllable = (e: Entity) => CONTROLLABLE.includes(e.kind);
 
 export function formatState(e: Entity): string {
 	if (e.state === null || e.state === undefined) return '–';
@@ -69,6 +84,10 @@ export function formatState(e: Entity): string {
 		return e.state ? 'On' : 'Off';
 	}
 	if (e.kind === 'button') return String(e.state).replaceAll('_', ' ');
+	if (e.kind === 'cover' || e.kind === 'lock') {
+		const word = String(e.state).charAt(0).toUpperCase() + String(e.state).slice(1);
+		return e.kind === 'cover' && e.attrs?.position != null && e.state === 'open' ? word + ' · ' + e.attrs.position + '%' : word;
+	}
 	if (typeof e.state === 'boolean') return e.state ? 'On' : 'Off';
 	return `${e.state}${e.unit ? ' ' + e.unit : ''}`;
 }
@@ -87,7 +106,9 @@ export function iconFor(d: Device): string {
 	const kinds = d.entities.map((e) => e.kind);
 	if (kinds.includes('light')) return 'bulb';
 	if (d.entities.some((e) => e.key === 'heat' || e.device_class === 'heat' || e.device_class === 'temperature')) return 'thermo';
-	if (kinds.includes('switch')) return 'plug';
+	if (kinds.includes('switch') || kinds.includes('fan')) return 'plug';
+	if (kinds.includes('climate')) return 'thermo';
+	if (kinds.includes('cover') || kinds.includes('lock')) return 'door';
 	if (d.entities.some((e) => e.device_class === 'occupancy')) return 'motion';
 	if (d.entities.some((e) => e.device_class === 'contact')) return 'door';
 	if (kinds.includes('sensor')) return 'gauge';
@@ -95,15 +116,17 @@ export function iconFor(d: Device): string {
 }
 
 /** Whether a device counts as "on" (any light or switch that is on). */
-export const isOn = (d: Device) => d.available && d.entities.some((e) => (e.kind === 'light' || e.kind === 'switch') && e.state === true);
+export const isOn = (d: Device) => d.available && d.entities.some((e) => (e.kind === 'light' || e.kind === 'switch' || e.kind === 'fan') && e.state === true);
 
 /** A short, readable line summarising a device for its tile. */
 export function headline(d: Device): string {
 	if (!d.available) return 'Offline';
 	const light = d.entities.find((e) => e.kind === 'light');
 	if (light) return light.state ? (light.brightness !== null ? `On · ${light.brightness}%` : 'On') : 'Off';
-	const sw = d.entities.find((e) => e.kind === 'switch');
+	const sw = d.entities.find((e) => e.kind === 'switch' || e.kind === 'fan');
 	if (sw) return sw.state ? 'On' : 'Off';
+	const other = d.entities.find((e) => (e.kind === 'cover' || e.kind === 'lock') && e.state);
+	if (other) return formatState(other);
 	const shown = d.entities.filter((e) => e.kind !== 'button' && e.state !== null && e.state !== undefined);
 	return shown.slice(0, 2).map(formatState).join(' · ') || 'No data';
 }

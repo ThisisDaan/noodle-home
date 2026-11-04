@@ -24,7 +24,9 @@ of nodes that have more than one):
   action.repeat     inputs "start" / "stop": sends the message on every N seconds until stopped  data: seconds, max_seconds
   action.device     also "loop_start" / "loop_stop": cycles a light through brightness levels until stopped or timed out
                     data: loop_levels [25, 50, ...] (0 = off), loop_seconds per step, loop_max_seconds
-  (action.device also has a "message" input: msg.payload {brightness} / {on} / {toggle} is applied to the device)
+  (action.device also has a "message" input: msg.payload {brightness} / {on} / {toggle} is applied to the device,
+   and for other kinds {color_temp} (kelvin), {color: {h, s}}, {position}, {action}, {mode}, {value}; see capabilities.py)
+  action.device     "open" / "close" / "stop" for covers and "lock" / "unlock" for locks are inputs too
   action.delay      wait N seconds
   action.timer     countdown with two inputs: "start" and "stop"; continues when it runs out
                     data: minutes, restart (true: a new start begins again; false: keep the running one)
@@ -59,7 +61,7 @@ from typing import Any
 
 import httpx
 
-from . import config, flowfiles, plugins, sun
+from . import capabilities, config, flowfiles, plugins, sun
 from .hub import Device, Entity, Hub
 from .store import Store
 
@@ -123,6 +125,8 @@ CREATE TABLE IF NOT EXISTS flow_timers (
 );
 """
 MAX_STEPS = 200
+EXTRA_COMMANDS = ("color_temp", "color", "position", "action", "mode", "value")  # message keys beyond on and brightness
+ACTIONS = capabilities.COVER_ACTIONS + capabilities.LOCK_ACTIONS  # inputs that need no setting
 
 
 class NodeRun:
@@ -819,9 +823,15 @@ class FlowEngine:
                 await self.hub.command(device.id, entity.key, toggle=True)
             elif "on" in payload:
                 await self.hub.command(device.id, entity.key, on=bool(payload["on"]))
+            elif extra := {k: payload[k] for k in EXTRA_COMMANDS if k in payload}:
+                await self.hub.command(device.id, entity.key, **extra)
             else:
-                raise ValueError("message has nothing for a device (brightness, on or toggle)")
+                raise ValueError("message has nothing for a device (brightness, on, toggle, color_temp, color, "
+                                 "position, action, mode or value)")
             self.add_log(flow["id"], f"{device.name}: {json.dumps(payload)}")
+        elif command in ACTIONS:
+            await self.hub.command(device.id, entity.key, action=command)
+            self.add_log(flow["id"], f"{device.name}: {command}")
         elif command == "brightness":
             await self.hub.command(device.id, entity.key, brightness=int(d.get("brightness") or 100))
             self.add_log(flow["id"], f"{device.name}: {d.get('brightness')}%")

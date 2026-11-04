@@ -9,6 +9,7 @@ A device has entities; each entity is one thing you can see or control:
   sensor         state (number/str), unit, device_class
   button         state (last action, e.g. "single" or "multi_press_3"), actions (the presses it can send)
   number         state (a settable value, e.g. a thermostat target), unit
+  fan, cover, lock, climate: see capabilities.py (kinds, attrs and commands)
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Awaitable, Callable, Protocol
 
+from . import capabilities
 from .store import Store
 
 log = logging.getLogger(__name__)
@@ -37,6 +39,7 @@ class Entity:
     device_class: str | None = None
     actions: list[str] | None = None  # buttons: what this button can send, e.g. ["single", "double", "hold"]
     group: str | None = None  # inputs that belong together, e.g. one profile of a multi-profile remote
+    attrs: dict = field(default_factory=dict)  # extra readings by kind, e.g. a cover's position (capabilities.py)
 
 
 @dataclass
@@ -61,10 +64,13 @@ class Device:
 
 class Adapter(Protocol):
     source: str
+    # Extra commands (capabilities.py) this adapter can carry out, beyond on / brightness / toggle. Optional.
+    extra_commands: frozenset[str]
 
     async def run(self) -> None: ...
 
-    async def command(self, device: Device, entity: Entity, on: bool | None, brightness: int | None, toggle: bool) -> None: ...
+    async def command(self, device: Device, entity: Entity, on: bool | None, brightness: int | None, toggle: bool,
+                      **extra) -> None: ...
 
 
 StateListener = Callable[[Device, Entity, Any, Any], None]
@@ -279,13 +285,22 @@ class Hub:
         return device
 
     async def command(self, device_id: str, key: str, on: bool | None = None,
-                      brightness: int | None = None, toggle: bool = False, value: float | None = None) -> None:
+                      brightness: int | None = None, toggle: bool = False, value: float | None = None,
+                      **extra) -> None:
+        """Send a command to an entity. `extra` holds the kind-specific ones (color_temp, color, position,
+        action, mode; capabilities.py) and is checked against the kind and the adapter."""
         device = self.devices[device_id]
         entity = device.entities[key]
-        if entity.kind not in ("light", "switch", "number"):
+        if entity.kind not in capabilities.CONTROLLABLE:
             raise ValueError(f"{entity.kind} cannot be controlled")
         adapter = self.adapters[device.source]
+        if value is not None:
+            extra["value"] = value
+        extra = capabilities.clean_extra(entity.kind, extra)
         if entity.kind == "number":
-            await adapter.command(device, entity, on, brightness, toggle, value=value)
-        else:
-            await adapter.command(device, entity, on, brightness, toggle)
+            await adapter.command(device, entity, on, brightness, toggle, value=extra.get("value"))
+            return
+        unsupported = set(extra) - set(getattr(adapter, "extra_commands", ()))
+        if unsupported:
+            raise ValueError(f"{device.name} ({device.source}) cannot do: {', '.join(sorted(unsupported))}")
+        await adapter.command(device, entity, on, brightness, toggle, **extra)

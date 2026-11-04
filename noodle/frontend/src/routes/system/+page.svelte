@@ -187,7 +187,7 @@
 		<div class="card-body gap-2 p-4">
 			<h2 class="card-title text-base">
 				<span class="status" class:status-success={notifyInfo?.configured || notifyInfo?.app_connections} class:status-error={!notifyInfo?.configured && !notifyInfo?.app_connections}></span>
-				Phone notifications
+				Notifications
 			</h2>
 			<p class="text-sm">
 				<b>Noodle app (home network):</b>
@@ -198,7 +198,7 @@
 				{/if}
 			</p>
 			<p class="text-sm"><b>ntfy (anywhere):</b>
-				{#if !notifyInfo?.configured}<span class="opacity-70">off. Add it under Connect to turn it on.</span>{/if}
+				{#if !notifyInfo?.configured}<span class="opacity-70">off. Add it under Integrations to turn it on.</span>{/if}
 			</p>
 			{#if notifyInfo?.configured}
 				<p class="text-sm opacity-70">Install the <b>ntfy</b> app, tap +, and subscribe to this topic on server <code>{notifyInfo.server}</code>. Keep the name secret: anyone who knows it can read along.</p>

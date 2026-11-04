@@ -23,7 +23,7 @@
 		{ href: '/', label: 'Dashboard', icon: 'home' },
 		{ href: '/devices', label: 'Devices', icon: 'devices' },
 		{ href: '/automations', label: 'Automations', icon: 'flow' },
-		{ href: '/integrations', label: 'Connect', icon: 'plug' },
+		{ href: '/integrations', label: 'Integrations', icon: 'plug' },
 		{ href: '/system', label: 'System', icon: 'system' }
 	];
 	const isActive = (href: string) => (href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href));

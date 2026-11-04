@@ -19,11 +19,11 @@ class BlePlugin(Plugin):
     id = "ble"
     source = "ble"
     adapter_class = BleAdapter
-    name = "Bluetooth sensors"
+    name = "Bluetooth"
     help = ("Temperature and humidity sensors that broadcast over Bluetooth (Xiaomi, Govee). This machine needs "
             "Bluetooth. Switch a sensor on near it, and it shows up in the list to add.")
     gated = True
-    icon = "thermo"
+    icon = "bluetooth"
     panel = "ble"
     forget = ["ble_sensors"]
     order = 40

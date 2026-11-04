@@ -8,7 +8,8 @@ from __future__ import annotations
 
 DEVICE = {"device_id": ("str", "Device id, e.g. zigbee:0x00158d0001a2b3c4 or matter:4 (see GET /api/devices)"),
           "key": ("str", "Entity key on that device, e.g. switch, brightness, temperature")}
-DEVICE_ACTIONS = ["on", "off", "toggle", "brightness", "brighter", "dimmer", "loop_start", "loop_stop", "message"]
+DEVICE_ACTIONS = ["on", "off", "toggle", "brightness", "brighter", "dimmer", "loop_start", "loop_stop", "message",
+                  "open", "close", "stop", "lock", "unlock"]
 
 CORE: dict[str, dict] = {
     "trigger.state": {
@@ -36,7 +37,7 @@ CORE: dict[str, dict] = {
     "trigger.webhook": {
         "label": "Phone notification button", "category": "trigger",
         "help": "Fires when a button with this name is tapped on a phone notification.",
-        "fields": {"name": ("str", "Button name, as set in the Notify phone node")}},
+        "fields": {"name": ("str", "Button name, as set in the Notify node")}},
     "trigger.sun": {
         "label": "Sunrise / sunset", "category": "trigger", "help": "Fires at sunrise or sunset.",
         "fields": {"event": ("str", "sunrise or sunset", ["sunrise", "sunset"]),

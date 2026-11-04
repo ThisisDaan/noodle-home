@@ -12,7 +12,7 @@
 		{ id: 'welcome', title: 'Welcome' },
 		{ id: 'location', title: 'Your home' },
 		{ id: 'services', title: 'Services' },
-		{ id: 'connect', title: 'Connect' },
+		{ id: 'connect', title: 'Integrations' },
 		{ id: 'device', title: 'First device' }
 	] as const;
 
@@ -138,7 +138,7 @@
 
 				{:else if step === 'services'}
 					<h1 class="text-2xl font-bold">What do your devices use?</h1>
-					<p class="text-sm opacity-70">Add the services you have. Not sure? Skip and add them later under Connect.</p>
+					<p class="text-sm opacity-70">Add the services you have. Not sure? Skip and add them later under Integrations.</p>
 					<div class="flex flex-col gap-2">
 						{#each choices as item (item.id)}
 							<div class="bg-base-200 rounded-box flex items-center gap-3 p-3">
@@ -172,7 +172,7 @@
 							{/each}
 						</div>
 					{:else}
-						<p class="opacity-70">You haven't added a service yet. You can do that any time under Connect.</p>
+						<p class="opacity-70">You haven't added a service yet. You can do that any time under Integrations.</p>
 					{/if}
 
 				{:else}

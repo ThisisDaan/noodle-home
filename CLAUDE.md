@@ -24,5 +24,6 @@ python -m noodle validate                                             # check fl
 - New flows from files or an AI start switched off; keep it that way (`FlowEngine._apply_file`, `/api/flow/import`).
 - Anything that migrates a user's data needs a test with the old shape and must be safe to run twice.
 - Keep personal device ids, names and addresses out of the code and examples. Use placeholders.
+- Only support devices and services that can be controlled locally (LAN, local API, Zigbee, Matter, BLE). No cloud-only integrations; a cloud account may be needed once to pair, never to run.
 - A live hub runs from this code on a Pi: back up `data/noodle/noodle.db` before deploying, and dry-run migrations on a copy.
 - Flow-writing guidance for AIs is in `docs/AI.md`; the prompt text is `RULES` in `noodle/backend/noodle/aicontext.py`.

@@ -59,7 +59,7 @@ export const CATALOG: NodeDef[] = [
 	{ type: 'cond.for', label: 'In state for…', category: 'condition', defaults: { state: 'on', minutes: 10 }, kinds: ['light', 'switch', 'binary_sensor', 'sensor'] },
 	{ type: 'cond.time', label: 'Between times', category: 'condition', defaults: { from: '22:00', to: '06:30' } },
 	{ type: 'cond.var', label: 'Check variable', category: 'condition', defaults: { name: 'status', op: 'eq', value: '' } },
-	{ type: 'action.device', label: 'Control device', category: 'action', defaults: { inputs: ['toggle'], brightness: 50, step: 5, min: 1, loop_levels: [25, 50, 75, 100], loop_seconds: 1, loop_max_seconds: 60 }, kinds: ['light', 'switch'] },
+	{ type: 'action.device', label: 'Control device', category: 'action', defaults: { inputs: ['toggle'], brightness: 50, step: 5, min: 1, loop_levels: [25, 50, 75, 100], loop_seconds: 1, loop_max_seconds: 60 }, kinds: ['light', 'switch', 'fan', 'cover', 'lock', 'climate'] },
 	{ type: 'action.throttle', label: 'Only once per…', category: 'action', defaults: { minutes: 5 } },
 	{ type: 'action.http', label: 'Call web address', category: 'action', defaults: { url: 'https://', method: 'GET', body: '' } },
 	{ type: 'action.flow', label: 'Run another flow', category: 'action', defaults: { flow_id: '' } },
@@ -120,8 +120,19 @@ export const NODE_ICON: Record<string, string> = {
 export type Output = { id: string; label: string; tone: 'yes' | 'no' | 'neutral'; group?: string };
 
 /** What "Control device" can do; the ones ticked in its properties become its inputs. Brightness ones are lights only. */
-export const DEVICE_ACTIONS = ['on', 'off', 'toggle', 'brightness', 'brighter', 'dimmer', 'loop_start', 'loop_stop', 'message'] as const;
+export const DEVICE_ACTIONS = ['on', 'off', 'toggle', 'brightness', 'brighter', 'dimmer', 'loop_start', 'loop_stop', 'message', 'open', 'close', 'stop', 'lock', 'unlock'] as const;
 export const DIM_ACTIONS = ['brightness', 'brighter', 'dimmer', 'loop_start', 'loop_stop'];
+/** The actions that make sense for each kind of entity (see backend capabilities.py). No device picked yet: on / off. */
+const ACTIONS_BY_KIND: Record<string, string[]> = {
+	light: ['on', 'off', 'toggle', ...DIM_ACTIONS, 'message'],
+	switch: ['on', 'off', 'toggle', 'message'],
+	fan: ['on', 'off', 'toggle', 'message'],
+	cover: ['open', 'close', 'stop', 'message'],
+	lock: ['lock', 'unlock', 'message'],
+	climate: ['message'],
+	number: ['message']
+};
+export const actionsFor = (kind?: string): string[] => ACTIONS_BY_KIND[kind ?? ''] ?? ['on', 'off', 'toggle', 'message'];
 export function deviceActionLabel(action: string, d: Record<string, any>): string {
 	return {
 		on: 'Turn on',
@@ -132,7 +143,12 @@ export function deviceActionLabel(action: string, d: Record<string, any>): strin
 		dimmer: `Dimmer (-${d.step ?? 5}% per press)`,
 		loop_start: `Start brightness loop (${(d.loop_levels ?? [25, 50, 75, 100]).join(' → ')}%)`,
 		loop_stop: 'Stop brightness loop',
-		message: 'Message: brightness, on, toggle'
+		message: 'Message: brightness, on, toggle, color, position',
+		open: 'Open',
+		close: 'Close',
+		stop: 'Stop',
+		lock: 'Lock',
+		unlock: 'Unlock'
 	}[action] ?? action;
 }
 

@@ -11,7 +11,7 @@ from noodle import config, integrations, plugins  # noqa: E402
 
 def test_discover_order_and_unique_ids():
     found = plugins.discover()
-    assert [p.id for p in found if p.visible] == ["zigbee", "matter", "thermostat", "hue", "ble", "ntfy", "system"]
+    assert [p.id for p in found if p.visible] == ["zigbee", "matter", "thermostat", "hue", "lifx", "ble", "ntfy", "system"]
     assert len({p.id for p in found}) == len(found)
 
 
@@ -23,7 +23,7 @@ def test_plugin_fields_and_forget_are_known_settings():
 
 def test_every_adapter_source_is_registered():
     from noodle import main
-    assert set(main.ADAPTERS) == {"zigbee", "matter", "ble", "thermostat", "hue", "group", "phone"}
+    assert set(main.ADAPTERS) == {"zigbee", "matter", "ble", "thermostat", "hue", "lifx", "group", "phone"}
     assert main.ADAPTERS["zigbee"] is main.zigbee and main.hub.adapters.keys() >= main.ADAPTERS.keys()
 
 

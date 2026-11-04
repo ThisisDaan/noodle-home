@@ -1,6 +1,6 @@
 # Noodle
 
-A self-hosted smart home hub. It connects the devices you already have (Zigbee, Matter and Thread, Philips Hue, Bluetooth sensors), shows them in one interface, and runs automations that are **plain YAML files**: edit them by hand, in the visual editor, or ask an AI to write them.
+A self-hosted smart home hub. It connects the devices you already have (Zigbee, Matter and Thread, Philips Hue, LIFX, Bluetooth sensors), shows them in one interface, and runs automations that are **plain YAML files**: edit them by hand, in the visual editor, or ask an AI to write them.
 
 - **Your devices in one place:** a dashboard you arrange yourself, a device list, history graphs, rooms, and a phone app for Android.
 - **Automations as files:** every flow is a small YAML file you can read, review, version and share. New flows always start switched off.
@@ -39,7 +39,7 @@ After the first login a short setup wizard asks for your home's name and locatio
 
 ## Integrations
 
-Zigbee (through Zigbee2MQTT), Matter and Thread (python-matter-server and an OpenThread border router), Philips Hue (paired from the app), Bluetooth temperature and humidity sensors, ntfy and in-app phone notifications, Google speakers (speak), a thermostat, and Docker containers (restart and logs). Writing a new one is a single module, see "Writing an integration" below.
+Zigbee (through Zigbee2MQTT), Matter and Thread (python-matter-server and an OpenThread border router), Philips Hue (paired from the app), LIFX (found on the network, no cloud), Bluetooth temperature and humidity sensors, ntfy and in-app phone notifications, Google speakers (speak), a thermostat, and Docker containers (restart and logs). Writing a new one is a single module, see "Writing an integration" below.
 
 ## Flows as files
 
@@ -111,7 +111,7 @@ Optional hooks: `preset()` (already set up counts as added), `routes()` (own API
 
 ## Develop
 
-Backend: `cd noodle/backend && pip install -r requirements-dev.txt && pytest`, and run it with `NOODLE_DATA=./dev-data python -m noodle`. Frontend: `cd noodle/frontend && bun install && bun run dev` (it proxies `/api` to port 8090), `bun run check` for types. To point a local hub at services elsewhere, set the addresses in the app (Connect) or with `MQTT_HOST`, `MATTER_URL` and `OTBR_URL`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Backend: `cd noodle/backend && pip install -r requirements-dev.txt && pytest`, and run it with `NOODLE_DATA=./dev-data python -m noodle`. Frontend: `cd noodle/frontend && bun install && bun run dev` (it proxies `/api` to port 8090), `bun run check` for types. To point a local hub at services elsewhere, set the addresses in the app (Integrations) or with `MQTT_HOST`, `MATTER_URL` and `OTBR_URL`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
@@ -182,7 +182,7 @@ The `otbr` container is the Thread border router; `matter-server` handles the Ma
    ```
 
 4. `docker compose up -d`, then check `docker compose logs -f otbr` for errors.
-5. In Noodle, add **Matter and Thread** under Connect (Matter server `ws://127.0.0.1:5580/ws`, border router `http://127.0.0.1:8082`), then pair Matter devices on the System page with their setup code. If you also use Home Assistant: add **Open Thread Border Router** (`http://127.0.0.1:8082`), **Thread** and **Matter** (`ws://127.0.0.1:5580/ws`) there, and pair with its Companion app (your phone needs Bluetooth on and the same Wi-Fi).
+5. In Noodle, add **Matter and Thread** under Integrations (Matter server `ws://127.0.0.1:5580/ws`, border router `http://127.0.0.1:8082`), then pair Matter devices on the System page with their setup code. If you also use Home Assistant: add **Open Thread Border Router** (`http://127.0.0.1:8082`), **Thread** and **Matter** (`ws://127.0.0.1:5580/ws`) there, and pair with its Companion app (your phone needs Bluetooth on and the same Wi-Fi).
 
 `matter2mqtt` forwards Matter button events to MQTT (`matter/<node>/<endpoint>/<event>`) for Home Assistant's scroll wheel automation.
 

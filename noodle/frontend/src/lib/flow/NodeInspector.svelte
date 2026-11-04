@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { api } from '../api.ts';
 	import { live } from '../live.svelte.ts';
-	import { accepts, DAY_NAMES, changeOptions, CYCLE_INPUTS, defaultChanges, pressOptions, DEFS, DEVICE_ACTIONS, deviceActionLabel, DIM_ACTIONS, isNumeric } from './catalog.ts';
+	import { accepts, DAY_NAMES, changeOptions, CYCLE_INPUTS, defaultChanges, pressOptions, DEFS, DEVICE_ACTIONS, actionsFor, deviceActionLabel, isNumeric } from './catalog.ts';
 
 	let { type, data, onchange, ondelete, onduplicate, onrun }: {
 		type: string;
@@ -22,15 +22,15 @@
 		(live.devices[data.device_id]?.entities ?? []).filter((e) => accepts(def, e))
 	);
 
-	// Only lights get the brightness commands; a plug or power switch is just on / off.
-	const dimmable = (e?: { kind: string }) => e?.kind === 'light';
-	const canDim = $derived(dimmable(live.devices[data.device_id]?.entities.find((e) => e.key === data.key)));
+	// Each kind of device gets its own actions: brightness for lights, open / close for covers, and so on.
+	const allowed = $derived(actionsFor(live.devices[data.device_id]?.entities.find((e) => e.key === data.key)?.kind));
 	const chosen = $derived<string[]>(data.inputs?.length ? data.inputs : [data.command ?? 'toggle']);
-	// Picking a plug drops the brightness actions a light had.
+	// Picking another kind of device drops the actions it does not have.
 	const onOff = (e?: { kind: string }) => {
-		if (type !== 'action.device' || dimmable(e)) return {};
-		const left = chosen.filter((a) => !DIM_ACTIONS.includes(a));
-		return { inputs: left.length ? left : ['toggle'] };
+		if (type !== 'action.device') return {};
+		const ok = actionsFor(e?.kind);
+		const left = chosen.filter((a) => ok.includes(a));
+		return left.length === chosen.length ? {} : { inputs: left.length ? left : [ok[0]] };
 	};
 
 	function toggleAction(action: string, on: boolean) {
@@ -223,7 +223,7 @@
 	{:else if type === 'action.device'}
 		<fieldset class="fieldset">
 			<legend class="fieldset-legend">What can this node do? Each one you tick gets its own input on the node.</legend>
-			{#each DEVICE_ACTIONS.filter((a) => canDim || !DIM_ACTIONS.includes(a)) as action (action)}
+			{#each DEVICE_ACTIONS.filter((a) => allowed.includes(a)) as action (action)}
 				<label class="flex items-center gap-2">
 					<input type="checkbox" class="checkbox checkbox-sm" checked={chosen.includes(action)}
 						disabled={chosen.length === 1 && chosen.includes(action)}
@@ -368,7 +368,7 @@
 	{:else if type === 'trigger.webhook'}
 		<label class="floating-label"><span>Button name</span>
 			<input class="input input-sm w-full" value={data.name} onchange={(e) => set({ name: e.currentTarget.value })} /></label>
-		<p class="text-xs opacity-60">Runs when you tap a button with this name on a phone notification. Add that button in a "Notify phone" node, using the same name.</p>
+		<p class="text-xs opacity-60">Runs when you tap a button with this name on a notification. Add that button in a "Notify" node, using the same name.</p>
 	{:else if def?.fields?.length}
 		<!-- A node an integration adds: its form is described by the integration (see plugins/base.py NodeField). -->
 		{#each def.fields as f (f.key)}
