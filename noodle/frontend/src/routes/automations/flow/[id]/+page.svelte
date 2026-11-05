@@ -35,6 +35,20 @@
 	let nodes = $state.raw<Node[]>([]);
 	let edges = $state.raw<Edge[]>([]);
 	let selectedId = $state<string | null>(null);
+
+	// Resting the pointer on a wire for half a second "focuses" it: the others fade, so it is easy to follow. Sweeping
+	// over several wires does nothing, because each new wire restarts the wait.
+	const FOCUS_AFTER_MS = 500;
+	let focusedEdge = $state<string | null>(null);
+	let focusTimer: ReturnType<typeof setTimeout> | undefined;
+	function wireEnter(id: string) {
+		clearTimeout(focusTimer);
+		focusTimer = setTimeout(() => (focusedEdge = id), FOCUS_AFTER_MS);
+	}
+	function wireLeave() {
+		clearTimeout(focusTimer);
+		focusedEdge = null;
+	}
 	let saved = $state('');
 	let error = $state('');
 	let logs = $state<LogLine[]>([]);
@@ -44,7 +58,7 @@
 	// times...), flows brightly just after a message went along, and is dashed while a timer is counting down.
 	const byId = $derived(Object.fromEntries(nodes.map((n) => [n.id, n])));
 	function edgeClass(e: Edge, i: number) {
-		const wire = `wire-${i % 8}`; // each wire its own colour
+		const wire = `wire-${i % 8}${e.id === focusedEdge ? ' focused' : ''}`; // each wire its own colour
 		if (activity.passed.includes(e.id)) return `${wire} fired`;
 		if (e.source in activity.waiting) return `${wire} waiting`;
 		const n = byId[e.source];
@@ -541,14 +555,15 @@
 			<span class="bg-base-content/20 hover:bg-primary h-10 w-1 rounded-full"></span>
 		</div>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="bg-base-100 border-base-content/10 rounded-box min-w-0 grow overflow-hidden border" bind:this={canvas}
+		<div class="bg-base-100 border-base-content/10 rounded-box min-w-0 grow overflow-hidden border" class:wire-focus={focusedEdge !== null} bind:this={canvas}
 			onpointermove={trackPointer} onpointerleave={() => (pointer = null)}
 			ondragover={(e) => { if (e.dataTransfer?.types.includes('application/x-noodle-node')) e.preventDefault(); }}
 			ondrop={dropOnCanvas}>
 			<SvelteFlow bind:nodes bind:edges {nodeTypes} {edgeTypes} fitView={!savedView} bind:viewport
 				snapGrid={[20, 20]} onmoveend={rememberView} connectionRadius={40}
 					defaultEdgeOptions={{ type: 'wire' }} colorMode="system" deleteKey={['Delete', 'Backspace']}
-				onnodeclick={({ node }) => (selectedId = node.id)} onpaneclick={() => (selectedId = null)}>
+				onnodeclick={({ node }) => (selectedId = node.id)} onpaneclick={() => (selectedId = null)}
+				onedgepointerenter={({ edge }) => wireEnter(edge.id)} onedgepointerleave={wireLeave}>
 				<Background />
 				<Controls class="max-md:hidden!" />
 				<MiniMap class="max-md:hidden!" />

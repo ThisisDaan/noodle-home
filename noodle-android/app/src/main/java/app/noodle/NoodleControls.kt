@@ -10,6 +10,7 @@ import android.service.controls.actions.ControlAction
 import android.service.controls.actions.FloatAction
 import android.service.controls.templates.ControlButton
 import android.service.controls.templates.RangeTemplate
+import android.service.controls.templates.TemperatureControlTemplate
 import android.service.controls.templates.ToggleRangeTemplate
 import android.service.controls.templates.ToggleTemplate
 import kotlinx.coroutines.CoroutineScope
@@ -75,9 +76,20 @@ class NoodleControls : ControlsProviderService() {
         return live.devices.transform { devices ->
             for (controlId in controlIds) {
                 val (deviceId, key) = controlId.split("|", limit = 2).let { it[0] to it.getOrElse(1) { "" } }
-                val device = devices[deviceId] ?: run { android.util.Log.w("Noodle", "no device $deviceId"); null } ?: continue
-                val entity = device.entities.firstOrNull { it.key == key } ?: continue
-                emit(build(controlId, device, entity))
+                val entity = devices[deviceId]?.entities?.firstOrNull { it.key == key }
+                val device = devices[deviceId]
+                if (device == null || entity == null) {
+                    // Gone from the hub (removed, or an old thermostat id): say so instead of loading forever.
+                    // An empty map just means the first snapshot has not arrived yet.
+                    if (devices.isNotEmpty()) emit(
+                        Control.StatefulBuilder(controlId, intent()).setTitle("Unavailable")
+                            .setSubtitle(controlId.substringBefore("|")).setStatus(Control.STATUS_NOT_FOUND).build(),
+                    )
+                    continue
+                }
+                runCatching { build(controlId, device, entity) }
+                    .onFailure { android.util.Log.e("Noodle", "control $controlId failed: ${it.message}", it) }
+                    .getOrNull()?.let { emit(it) }
             }
         }.asPublisher()
     }
@@ -88,15 +100,26 @@ class NoodleControls : ControlsProviderService() {
             .setZone(device.area ?: "Other")
             .setDeviceType(type(entity))
             .setStatus(if (device.available) Control.STATUS_OK else Control.STATUS_DISABLED)
+        // Android tints "on" controls with the system accent (usually blue); lights should read as warm.
+        if (entity.kind == "light") b.setCustomColor(android.content.res.ColorStateList.valueOf(0xFFFFB300.toInt()))
         when {
             entity.kind == "number" -> {
                 val value = (entity.number ?: 18.0).toFloat()
                 b.setStatusText(entity.text)
-                b.setControlTemplate(RangeTemplate(controlId, 10f, 24f, value.coerceIn(10f, 24f), 0.5f, "%.1f"))
+                b.setControlTemplate(
+                    TemperatureControlTemplate(
+                        controlId,
+                        RangeTemplate(controlId, 10f, 24f, value.coerceIn(10f, 24f), 0.5f, "%.1f"),
+                        TemperatureControlTemplate.MODE_HEAT,
+                        TemperatureControlTemplate.MODE_HEAT,
+                        TemperatureControlTemplate.FLAG_MODE_HEAT,
+                    ),
+                )
             }
             entity.kind == "light" && entity.brightness != null -> {
                 val on = entity.on == true
-                b.setStatusText(if (on) "${entity.brightness}%" else "Off")
+                // The range slider already shows the percentage, so the status is just the state.
+                b.setStatusText(if (on) "On" else "Off")
                 b.setControlTemplate(
                     ToggleRangeTemplate(controlId, on, "",
                         RangeTemplate(controlId, 1f, 100f, entity.brightness.toFloat().coerceIn(1f, 100f), 1f, "%.0f%%")),

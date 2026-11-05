@@ -1,92 +1,124 @@
 <script lang="ts">
 	import { api, type Device, type Entity } from '../api.ts';
-	import { lastChanges } from './last.svelte.ts';
+	import Icon from '../Icon.svelte';
+	import DialControl from './DialControl.svelte';
 
-	/** A button or remote: which button was pressed last and when. In the large version every press can be
-	 * tested from here: it counts as a real press (shows up in the history and runs the automations). */
-	let { device, size = 'tile' }: { device: Device; size?: 'tile' | 'large' } = $props();
+	/** A button or remote on a card: it acts like the button. Pressing it counts as a real press (it shows in the
+	 * history and runs the automations that listen to it). Every remote with a dimmer pair (inputs the hub marked
+	 * "increase" and "decrease": a wheel, Brighter and Dimmer, ...) gets the same − knob +, one profile at a time
+	 * with a switch for the profile; its other buttons (On, Off, ...) sit beside it. Any other button is a round
+	 * button of its own. */
+	let { device }: { device: Device } = $props();
 
-	const last = lastChanges(() => device.id);
-	const buttons = $derived(device.entities.filter((e) => e.kind === 'button'));
-	const words = (text: unknown) => String(text ?? '').replaceAll('_', ' ');
-
-	// The press shown on the tile: the newest one across all buttons of the device.
-	const newest = $derived(
-		buttons
-			.map((e) => ({ e, at: last.get(e.key) }))
-			.filter((x) => x.at)
-			.sort((a, b) => b.at!.ts - a.at!.ts)[0]
+	// Numbered buttons in numeric order (1 2 3 4, not the order the bridge happens to list them in).
+	const buttons = $derived(
+		device.entities.filter((e) => e.kind === 'button').sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
 	);
-
-	let pressing = $state<string | null>(null);
+	let pressed = $state<string | null>(null);
 	let error = $state('');
-	async function press(entity: Entity, action: string) {
-		pressing = `${entity.key}:${action}`;
+	let profile = $state(0);
+
+	const main = (e: Entity) => e.actions?.find((a) => /^(single|press|short_release|initial_press)$/.test(a)) ?? e.actions?.[0] ?? 'single';
+	const label = (e: Entity) => e.name.replace(/^Button\s*/i, '') || e.name;
+
+	const press = (entity: Entity) => pressAction(entity, main(entity));
+	async function pressAction(entity: Entity, action: string) {
+		pressed = entity.key;
 		error = '';
 		try {
 			await api(`/devices/${encodeURIComponent(device.id)}/entities/${encodeURIComponent(entity.key)}/press`, { body: { action } });
 		} catch (err) {
 			error = err instanceof Error ? err.message : String(err);
 		} finally {
-			setTimeout(() => (pressing = null), 300);
+			setTimeout(() => (pressed = null), 250);
 		}
 	}
-	const main = (e: Entity) => e.actions?.find((a) => /^(single|press|short_release|initial_press)$/.test(a)) ?? e.actions?.[0];
 
-	// Buttons of a multi-button remote that belong together are listed under one heading.
-	const groups = $derived.by(() => {
-		const out: { title: string | null; items: Entity[] }[] = [];
+	// One input that reports single / double / triple (a tap switch): one button, tapped once, twice or three
+	// times within a moment, like the real one. The press is sent once the taps stop.
+	const TAPS = ['single', 'double', 'triple'];
+	const multiTap = $derived(buttons.length === 1 && TAPS.filter((a) => buttons[0].actions?.includes(a)).length > 1);
+	let taps = 0;
+	let tapTimer: ReturnType<typeof setTimeout> | undefined;
+	function tap(entity: Entity) {
+		const allowed = TAPS.filter((a) => entity.actions?.includes(a));
+		taps = Math.min(taps + 1, allowed.length);
+		clearTimeout(tapTimer);
+		tapTimer = setTimeout(() => {
+			const action = allowed[taps - 1];
+			taps = 0;
+			pressAction(entity, action);
+		}, 350);
+	}
+
+	// The inputs of one profile of a remote stay together: the dimmer pair (by role) and what else it has.
+	type Section = { title: string | null; down?: Entity; up?: Entity; others: Entity[] };
+	const sections = $derived.by(() => {
+		const out: Section[] = [];
 		for (const e of buttons) {
 			const title = e.group ?? null;
-			const group = out.find((g) => g.title === title);
-			if (group) group.items.push(e);
-			else out.push({ title, items: [e] });
+			let section = out.find((s) => s.title === title);
+			if (!section) out.push((section = { title, others: [] }));
+			if (e.role === 'decrease' && !section.down) section.down = e;
+			else if (e.role === 'increase' && !section.up) section.up = e;
+			else section.others.push(e);
 		}
 		return out;
 	});
+	const hasDial = $derived(sections.some((s) => s.down && s.up));
+	const current = $derived(sections[Math.min(profile, sections.length - 1)]);
 </script>
 
-{#if size === 'large'}
-	<div class="flex flex-col gap-3" class:opacity-50={!device.available}>
-		{#each groups as g (g.title ?? '')}
-			<div class="bg-base-200 rounded-box flex flex-col gap-3 p-3.5">
-				{#if g.title}<h4 class="text-xs font-semibold tracking-wide uppercase opacity-60">{g.title}</h4>{/if}
-				{#each g.items as e (e.key)}
-					<div class="flex flex-col gap-2">
-						<div class="flex items-baseline justify-between gap-3">
-							<span class="font-medium">{e.name}</span>
-							<span class="truncate text-xs opacity-60">
-								{last.get(e.key) ? `${words(last.get(e.key)!.value)} · ${last.ago(e.key)}` : 'never used'}
-							</span>
-						</div>
-						<div class="flex flex-wrap gap-2">
-							{#each e.actions?.length ? e.actions : ['single'] as action (action)}
-								<button type="button" class="btn btn-sm active:scale-95 {pressing === `${e.key}:${action}` ? 'btn-primary' : 'btn-soft'}"
-									disabled={!device.available} onclick={() => press(e, action)}>{words(action)}</button>
-							{/each}
-						</div>
-					</div>
-				{/each}
-			</div>
-		{/each}
-		<p class="text-xs opacity-60">A press here is treated as a real one: automations that listen to this button run.</p>
-		{#if error}<div role="alert" class="alert alert-error alert-soft text-sm">{error}</div>{/if}
-	</div>
-{:else}
-	<div class="flex items-center gap-2 text-sm" class:opacity-50={!device.available}>
-		<span class="min-w-0 grow">
-			{#if newest}
-				<span class="block truncate font-semibold">{words(newest.at!.value)}</span>
-				<span class="block truncate text-xs opacity-60">{buttons.length > 1 ? `${newest.e.name} · ` : ''}{last.ago(newest.e.key)}</span>
-			{:else}
-				<span class="opacity-60">Not used yet</span>
+{#if buttons.length && device.available}
+	{#if multiTap}
+		<button type="button" class="btn rounded-box h-12 min-h-0 w-full gap-2 active:scale-[0.97] {pressed ? 'btn-primary' : 'btn-soft'}"
+			aria-label="Press {device.name}: tap once, twice or three times" onclick={() => tap(buttons[0])}>
+			<Icon name="circle" class="size-5" />Press
+		</button>
+	{:else if buttons.length === 1 && (buttons[0].actions?.length ?? 0) > 1 && !buttons[0].actions!.some((a) => /multi_press|long_press/.test(a))}
+		<!-- One input that reports several presses (a Zigbee dimmer's on, up, down, off): a button for each. -->
+		<div class="flex h-12 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label="Presses of {device.name}">
+			{#each buttons[0].actions!.filter((a) => !/release|hold/.test(a)) as action (action)}
+				<button type="button" class="btn btn-soft rounded-box h-12 min-h-0 flex-none px-3 capitalize active:scale-90"
+					onclick={() => pressAction(buttons[0], action)}>{action.replace(/_press$/, '').replaceAll('_', ' ')}</button>
+			{/each}
+		</div>
+	{:else if buttons.length === 1}
+		<button type="button" class="btn btn-soft rounded-box h-12 min-h-0 w-full gap-2 active:scale-[0.97]" onclick={() => press(buttons[0])}>
+			<Icon name="circle" class="size-5" />Press
+		</button>
+	{:else if hasDial && current}
+		<div class="flex h-12 items-center gap-2">
+			{#if current.down && current.up}
+				<DialControl label={current.title ?? device.name}
+					onstep={(direction) => press(direction > 0 ? current.up! : current.down!)}
+					ontap={current.others.length === 1 ? () => press(current.others[0]) : undefined} />
 			{/if}
-		</span>
-		{#if buttons.length === 1 && main(buttons[0]) && device.available}
-			<button type="button" class="btn btn-sm btn-circle btn-soft relative z-10 active:scale-90" aria-label="Press {buttons[0].name}"
-				onclick={(e) => { e.stopPropagation(); press(buttons[0], main(buttons[0])!); }}>
-				<span class="size-3 rounded-full bg-current"></span>
-			</button>
-		{/if}
-	</div>
+			{#if current.others.length > 1}
+				{#each current.others as e (e.key)}
+					<button type="button" title={e.name} aria-label="Press {e.name}"
+						class="btn h-12 min-h-0 min-w-0 flex-1 rounded-full px-2 text-xs active:scale-90 {pressed === e.key ? 'btn-primary' : 'btn-soft'}"
+						onclick={() => press(e)}>{e.name}</button>
+				{/each}
+			{/if}
+			{#if sections.length > 1}
+				<div class="join h-12 min-w-0 grow" role="group" aria-label="Profile">
+					{#each sections as s, i (s.title ?? i)}
+						<button type="button" title={s.title ?? ''} aria-pressed={i === profile}
+							class="btn join-item h-12 min-h-0 min-w-0 flex-1 px-0 {i === profile ? 'btn-primary' : 'btn-soft'}"
+							onclick={() => (profile = i)}>{s.title?.replace(/\D+/g, '') || i + 1}</button>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	{:else}
+		<div class="flex h-12 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label="Buttons of {device.name}">
+			{#each buttons as e (e.key)}
+				<button type="button" title={e.name} aria-label="Press {e.name}"
+					class="btn rounded-box h-12 min-h-0 min-w-12 flex-1 px-3 active:scale-90 {pressed === e.key ? 'btn-primary' : 'btn-soft'}"
+					onclick={() => press(e)}>{label(e)}</button>
+			{/each}
+		</div>
+	{/if}
+	{#if error}<p class="text-error absolute right-3 bottom-0.5 text-xs">{error}</p>{/if}
 {/if}

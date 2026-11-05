@@ -24,7 +24,7 @@ def describe(item: Integration, plugin=None, adapter=None) -> dict:
            if plugin and plugin.searchable else {}),
         **(plugin.details(adapter) if plugin else {}),
         "added": item.always or item.id in added_ids(), "always": item.always,
-        "fields": [{"key": f.key, "label": f.label, "placeholder": f.placeholder, "secret": f.secret,
+        "fields": [{"key": f.key, "label": f.label, "placeholder": f.placeholder, "secret": f.secret, "hidden": f.hidden, "help": f.help, "advanced": f.advanced,
                     "value": "" if f.secret else config.get_text(f.key),
                     "set": bool(config.get_text(f.key)) if f.secret else None} for f in item.fields],
     }

@@ -94,12 +94,27 @@ class Store:
         return hmac.compare_digest(attempt, digest)
 
     # app tokens (the Noodle Android app): only a hash is kept, so a leaked database cannot be used to log in
-    def add_app_token(self, name: str) -> str:
+    def add_app_token(self, name: str, kind: str = "app") -> str:
         token = secrets.token_urlsafe(32)
         tokens = json.loads(self.get("app_tokens") or "{}")
-        tokens[hashlib.sha256(token.encode()).hexdigest()] = {"name": name, "created": time.time()}
+        tokens[hashlib.sha256(token.encode()).hexdigest()] = {"name": name, "created": time.time(), "kind": kind}
         self.set("app_tokens", json.dumps(tokens))
         return token
+
+    def app_tokens(self, kind: str) -> list[dict]:
+        """The tokens of one kind (never the token itself): {id, name, created}."""
+        tokens = json.loads(self.get("app_tokens") or "{}")
+        return sorted(({"id": h[:16], "name": t.get("name", ""), "created": t.get("created", 0)}
+                       for h, t in tokens.items() if t.get("kind") == kind), key=lambda t: t["created"])
+
+    def remove_app_token(self, token_id: str, kind: str) -> bool:
+        tokens = json.loads(self.get("app_tokens") or "{}")
+        hit = [h for h, t in tokens.items() if h[:16] == token_id and t.get("kind") == kind]
+        for h in hit:
+            del tokens[h]
+        if hit:
+            self.set("app_tokens", json.dumps(tokens))
+        return bool(hit)
 
     def check_app_token(self, token: str) -> bool:
         return hashlib.sha256(token.encode()).hexdigest() in json.loads(self.get("app_tokens") or "{}")
@@ -255,6 +270,12 @@ class Store:
         rows = self.db.execute("SELECT ts, key, value FROM history WHERE device_id = ? AND ts >= ? ORDER BY ts DESC, id DESC LIMIT ?",
                                (device_id, since, limit)).fetchall()
         return [{"ts": r["ts"], "key": r["key"], "value": json.loads(r["value"])} for r in rows]
+
+    def last_history(self, device_id: str, key: str) -> tuple[float, object] | None:
+        """When an entity last changed and to what, from its newest history row."""
+        row = self.db.execute("SELECT ts, value FROM history WHERE device_id = ? AND key = ? ORDER BY ts DESC, id DESC LIMIT 1",
+                              (device_id, key)).fetchone()
+        return (row["ts"], json.loads(row["value"])) if row else None
 
     def hook_token(self) -> str:
         """Secret part of webhook URLs (used by ntfy notification buttons)."""

@@ -1,5 +1,6 @@
-export type Field = { key: string; label: string; placeholder: string; secret: boolean; value: string; set: boolean | null };
+export type Field = { key: string; label: string; placeholder: string; secret: boolean; hidden?: boolean; help?: string; advanced?: boolean; value: string; set: boolean | null };
 export type Sensor = { address: string; name: string; model: string | null; available: boolean };
+export type LanDevice = { key: string; name: string; address: string; available: boolean };
 export type Bulb = { mac: string; name: string; address: string; available: boolean };
 
 /** One thing a search found (backend discovery.py). */
@@ -31,6 +32,11 @@ export type Integration = {
 	// Details some integrations add (Bluetooth)
 	sensors?: Sensor[];
 	bulbs?: Bulb[];
+	devices?: LanDevice[];
+	add_hint?: string;
+	// IKEA DIRIGERA pairing
+	paired?: boolean;
+	address?: string;
 	searchable?: boolean;
 	/** What a search looks for ("Hue bridges"), what to do on the device meanwhile, and the button to press. */
 	noun?: string;

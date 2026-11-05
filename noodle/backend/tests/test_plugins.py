@@ -11,7 +11,7 @@ from noodle import config, integrations, plugins  # noqa: E402
 
 def test_discover_order_and_unique_ids():
     found = plugins.discover()
-    assert [p.id for p in found if p.visible] == ["zigbee", "matter", "hue", "lifx", "ble", "ntfy", "system"]
+    assert [p.id for p in found if p.visible] == ["zigbee", "matter", "hue", "lifx", "shelly", "wled", "kasa", "sonos", "ble", "nanoleaf", "mqtt", "homeassistant", "dirigera", "ntfy", "system"]
     assert len({p.id for p in found}) == len(found)
 
 
@@ -23,7 +23,7 @@ def test_plugin_fields_and_forget_are_known_settings():
 
 def test_every_adapter_source_is_registered():
     from noodle import main
-    assert set(main.ADAPTERS) == {"zigbee", "matter", "ble", "hue", "lifx", "group", "phone"}
+    assert set(main.ADAPTERS) == {"zigbee", "matter", "ble", "hue", "lifx", "group", "phone", "shelly", "wled", "kasa", "sonos", "nanoleaf", "mqtt", "homeassistant", "dirigera"}
     assert main.ADAPTERS["zigbee"] is main.zigbee and main.hub.adapters.keys() >= main.ADAPTERS.keys()
 
 
@@ -88,7 +88,7 @@ def test_integrations_tell_the_page_which_panel_and_icon_to_use():
     described = {i.id: main._describe(i) for i in main._integrations()}
     assert described["hue"]["panel"] is None and described["hue"]["searchable"] is True and described["hue"]["press_hint"]
     assert described["ble"]["panel"] == "ble" and "sensors" in described["ble"]
-    assert described["ntfy"]["panel"] == "notify" and described["zigbee"]["panel"] is None
+    assert described["ntfy"]["panel"] == "notify" and described["zigbee"]["panel"] == "zigbee" and described["matter"]["panel"] == "matter"
     assert all(d["icon"] for d in described.values())
 
 
@@ -195,3 +195,71 @@ def test_a_simulated_button_press_runs_like_a_real_one(monkeypatch):
             raise AssertionError("expected 400")
     finally:
         del main.hub.devices[device.id]
+
+
+def test_the_last_press_and_change_time_come_with_the_device():
+    import time
+
+    from noodle import main
+    from noodle.hub import Device, Entity
+    device = Device(id="test:t", source="zigbee", name="Remote", entities={
+        "action": Entity(key="action", kind="button", name="Button", actions=["single"]),
+        "occupancy": Entity(key="occupancy", kind="binary_sensor", name="Motion", state=True, device_class="occupancy")})
+    main.hub.upsert(device)
+    try:
+        assert device.entities["occupancy"].changed and device.entities["action"].changed is None
+        before = time.time()
+        main.hub.event(device, "action", "single")
+        assert device.entities["action"].changed >= before
+        assert main.hub.store.since("test:t", "action")[0] == "'single'"
+        fresh = Device(id="test:t", source="zigbee", name="Remote", entities={"action": Entity(key="action", kind="button", name="Button")})
+        main.hub.upsert(fresh)  # an adapter reloading the device list, or a restart
+        assert fresh.entities["action"].changed == device.entities["action"].changed and fresh.entities["action"].state == "single"
+    finally:
+        main.hub.remove("test:t")
+
+
+def test_bilresa_first_input_of_a_profile_turns_up():
+    from noodle.adapters.matter import REMOTE_LAYOUTS
+    layout = REMOTE_LAYOUTS["BILRESA"]
+    assert layout["roles"][0][0] == "Dimmer increase" and layout["roles"][1][0] == "Dimmer decrease"
+    # listed as down, up, button
+    assert [layout["roles"][i][0] for i in layout["show"]] == ["Dimmer decrease", "Dimmer increase", "Button"]
+
+
+def test_last_change_comes_from_history_when_a_sensor_has_not_reported_since_a_restart():
+    from noodle import main
+    from noodle.hub import Device, Entity
+    main.hub.store.add_history("test:pir", "occupancy", True)
+    main.hub.store.add_history("test:pir", "action", "single")
+    device = Device(id="test:pir", source="zigbee", name="Motion", entities={
+        "occupancy": Entity(key="occupancy", kind="binary_sensor", name="Motion", device_class="occupancy"),  # state unknown
+        "action": Entity(key="action", kind="button", name="Button")})
+    main.hub.upsert(device)
+    try:
+        assert device.entities["occupancy"].state is None and device.entities["occupancy"].changed
+        assert device.entities["action"].changed and device.entities["action"].state == "single"
+    finally:
+        main.hub.remove("test:pir")
+
+
+def test_an_unknown_sensor_state_shows_the_last_known_one():
+    from noodle import main
+    from noodle.hub import Device, Entity
+    main.hub.store.add_history("test:k", "occupancy", False)
+    device = Device(id="test:k", source="zigbee", name="Motion", entities={
+        "occupancy": Entity(key="occupancy", kind="binary_sensor", name="Motion", device_class="occupancy")})
+    main.hub.upsert(device)
+    try:
+        assert device.entities["occupancy"].state is None and device.entities["occupancy"].last is False
+    finally:
+        main.hub.remove("test:k")
+
+
+def test_dimmer_inputs_get_a_direction_whatever_the_brand_calls_them():
+    from noodle.hub import Entity
+    role = lambda key, name: Entity(key=key, kind="button", name=name).role
+    assert role("button_1", "Dimmer increase") == "increase" and role("button_2", "Dimmer decrease") == "decrease"
+    assert role("up", "Brighter") == "increase" and role("down", "Dimmer") == "decrease"
+    assert role("button_3", "Button") is None and role("on", "On") is None and role("off", "Off") is None
+    assert Entity(key="up", kind="sensor", name="Up").role is None

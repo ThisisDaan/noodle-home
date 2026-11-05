@@ -29,8 +29,10 @@ LIGHT_DEVICE_TYPES = {256, 257, 268, 269}  # on/off, dimmable, color temperature
 # Endpoints come in groups of `size` (e.g. profiles), `roles` names each input of a group in endpoint order as
 # (name, device class: "wheel" if its clicks arrive as one counted press), and `show` is the order they are listed in.
 REMOTE_LAYOUTS = {
+    # Turning the wheel up is the first input of a profile and down the second (checked against a real remote:
+    # flows send input 1 to "brighter" and input 2 to "dimmer"). They are listed down, up, button.
     "BILRESA": {"group": "Profile", "size": 3, "show": (1, 0, 2),
-                "roles": (("Dimmer decrease", "wheel"), ("Dimmer increase", "wheel"), ("Button", None))},
+                "roles": (("Dimmer increase", "wheel"), ("Dimmer decrease", "wheel"), ("Button", None))},
 }
 
 

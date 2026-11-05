@@ -1,4 +1,5 @@
 import { api } from './api';
+import { placeBefore } from './order.ts';
 
 export type Widget = {
 	type: 'status' | 'favourites' | 'rooms' | 'flows' | 'sensor';
@@ -131,11 +132,9 @@ class Layout {
 		this.#save();
 	}
 
-	/** Put `id` just before `beforeId` (or last), within the given sibling ids. */
+	/** Move `id` onto `beforeId` (or last): it takes that card's place, and the ones in between shift over. */
 	place(id: string, beforeId: string | null, siblings: string[]) {
-		const ids = siblings.filter((x) => x !== id);
-		const at = beforeId === null ? ids.length : Math.max(0, ids.indexOf(beforeId));
-		ids.splice(at, 0, id);
+		const ids = placeBefore(siblings, id, beforeId);
 		this.order = [...this.order.filter((x) => !siblings.includes(x)), ...ids];
 		this.#save();
 	}

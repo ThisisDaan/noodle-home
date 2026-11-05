@@ -1,8 +1,9 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import DeviceFace from './devices/DeviceFace.svelte';
-	import { deviceKind } from './devices/kinds.ts';
-	import { command, headline, iconFor, isOn, type Device } from './api';
+	import TileSubtitle from './devices/TileSubtitle.svelte';
+	import { motionActive } from './devices/kinds.ts';
+	import { iconFor, isOn, type Device } from './api';
 	import { layout, ui } from './layout.svelte';
 
 	type Props = {
@@ -16,35 +17,18 @@
 	};
 	let { device, editing = false, first = false, last = false, onnudge, ondragstart, ondrop }: Props = $props();
 
-	let busy = $state(false);
 	let dragging = $state(false);
 	let over = $state(false);
-
-	const on = $derived(isOn(device));
-	// The one entity a quick tap should flip: the first light, else the first switch.
-	const primary = $derived(
-		device.entities.find((e) => e.kind === 'light') ?? device.entities.find((e) => e.kind === 'switch')
-	);
-	const kind = $derived(deviceKind(device));
-	// Climate, motion and button tiles show their face instead of the one-line summary.
-	const summary = $derived(kind === 'light' || kind === 'generic');
-
-	async function flip(e: Event) {
-		e.stopPropagation();
-		if (!primary || busy) return;
-		busy = true;
-		try {
-			await command(device, primary, { toggle: true });
-		} finally {
-			busy = false;
-		}
-	}
+	const lit = $derived(isOn(device) || motionActive(device));
 </script>
 
+<!-- Every card has the same structure and height: the name with one line under it, and a bottom row (DeviceFace)
+     that is always 3rem high. Battery and other properties are in the device's sheet, not here. -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-	class="tile group flex min-h-28 flex-col gap-2 p-3.5"
-	class:is-on={on}
+	class="tile group relative flex flex-col justify-between gap-3 p-3.5"
+	class:h-36={!editing}
+	class:is-on={lit}
 	class:is-dragging={dragging}
 	class:is-over={over}
 	class:opacity-60={!device.available && !editing}
@@ -77,36 +61,17 @@
 			<span class="icon-bubble"><Icon name={iconFor(device)} /></span>
 			<span class="min-w-0">
 				<span class="block truncate leading-tight font-semibold">{device.name}</span>
-				{#if summary || !device.available}<span class="block truncate text-sm opacity-70">{headline(device)}</span>{/if}
+				<span class="block truncate text-xs opacity-60"><TileSubtitle {device} /></span>
 			</span>
 		</button>
-
 		{#if editing}
 			<span class="opacity-50" title="Drag to reorder"><Icon name="grip" /></span>
-		{:else if primary && device.available}
-			<input
-				type="checkbox"
-				class="toggle toggle-primary relative z-10 shrink-0"
-				checked={on}
-				disabled={busy}
-				aria-label="Toggle {device.name}"
-				onclick={flip}
-			/>
+		{:else if layout.isFavorite(device.id)}
+			<Icon name="star" class="text-accent size-4 shrink-0 fill-current" />
 		{/if}
 	</div>
 
-	{#if !editing}<div class="mt-auto"><DeviceFace {device} size="tile" /></div>{/if}
-
-	<div class="flex items-center gap-2 text-xs opacity-70" class:mt-auto={editing}>
-		<span class="grow"></span>
-		{#if !device.available}<span class="badge badge-error badge-soft badge-xs">offline</span>{/if}
-		{#if device.battery !== null}
-			<span class="flex items-center gap-1" class:text-warning={device.battery < 20}>
-				<Icon name="battery" class="size-4" />{device.battery}%
-			</span>
-		{/if}
-		{#if layout.isFavorite(device.id) && !editing}<Icon name="star" class="text-accent size-4 fill-current" />{/if}
-	</div>
+	{#if !editing}<div class="relative z-10"><DeviceFace {device} size="tile" /></div>{/if}
 
 	{#if editing}
 		<div class="border-base-content/10 relative z-10 flex items-center gap-1 border-t pt-2">

@@ -12,6 +12,26 @@ Every automation (a *flow*) is a small YAML file, so an AI can write one for you
 
 A flow whose id already exists is only replaced if you say so, and the replacement is switched off too.
 
+## Connect an AI directly (MCP)
+
+The hub is an MCP server at `http://<hub>:<port>/mcp`. Once connected, the AI reads your devices, writes the flow, checks it and adds it (switched off) on its own, with no copy and paste. It can read the hub and add flows; it cannot control devices.
+
+Easiest: in **Automations → Connect an AI**, pick your tool (Claude Code, Claude Desktop, Cursor, VS Code, Codex, Gemini CLI or other) and copy what it shows. Every tool gets its own key, and **Disconnect** in the same window removes it. Or by hand:
+
+1. Get a token (once; the password is not stored anywhere):
+
+```bash
+curl -X POST http://noodle.local:8080/api/auth/app -H "Content-Type: application/json" -d '{"password":"YOUR PASSWORD","name":"Claude"}'
+```
+
+2. Add the server to your AI tool:
+
+```bash
+claude mcp add --transport http noodle http://noodle.local:8080/mcp --header "Authorization: Bearer YOUR_TOKEN"
+```
+
+Other tools that take a JSON config (Cursor, VS Code, Claude Desktop through `mcp-remote`) need the same URL and an `Authorization: Bearer YOUR_TOKEN` header. Tools: `get_context`, `list_devices`, `list_flows`, `validate_flow`, `import_flow`.
+
 ## From the command line or an AI coding tool
 
 Flows live in `<data>/config/flows/*.yaml` (in Docker: `data/noodle/config/flows/`). The hub reloads a file within a couple of seconds.

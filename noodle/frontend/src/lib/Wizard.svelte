@@ -30,7 +30,6 @@
 	const field = (key: string) => hub?.fields.find((f) => f.key === key)?.value ?? '';
 
 	let homeName = $state('');
-	let place = $state({ latitude: '', longitude: '', timezone: '' });
 
 	$effect(() => {
 		api<Integration[]>('/integrations').then((list) => {
@@ -38,14 +37,12 @@
 			const system = list.find((i) => i.always);
 			const get = (key: string) => system?.fields.find((f) => f.key === key)?.value ?? '';
 			homeName = get('home_name');
-			place = { latitude: get('latitude'), longitude: get('longitude'), timezone: get('timezone') };
 			loaded = true;
 		});
 	});
 
 	const replace = (updated: Integration) => {
 		items = items.map((i) => (i.id === updated.id ? updated : i));
-		if (updated.always) place = { latitude: field('latitude'), longitude: field('longitude'), timezone: field('timezone') };
 	};
 
 	/** Keep what was typed on this step, then go on. */
@@ -55,12 +52,6 @@
 		try {
 			if (step === 'welcome' && hub && homeName.trim() !== field('home_name')) {
 				replace(await api<Integration>('/integrations/system', { method: 'PUT', body: { values: { home_name: homeName.trim() } } }));
-			}
-			if (step === 'location' && hub) {
-				const values = Object.fromEntries(Object.entries(place).filter(([k, v]) => v.trim() !== field(k)));
-				if (Object.keys(values).length) {
-					replace(await api<Integration>('/integrations/system', { method: 'PUT', body: { values } }));
-				}
 			}
 			if (index === STEPS.length - 1) await finish();
 			else index++;
@@ -115,16 +106,8 @@
 
 				{:else if step === 'location'}
 					<h1 class="text-2xl font-bold">Where is your home?</h1>
-					<p class="text-sm opacity-70">Used for sunrise and sunset ("turn the lights on at sunset") and to tell when a phone is home.</p>
+					<p class="text-sm opacity-70">Used for sunrise and sunset ("turn the lights on at sunset") and to tell when a phone is home. You can skip this and do it later under System.</p>
 					{#if hub}<LocationPanel item={hub} onchange={replace} />{/if}
-					<div class="grid grid-cols-2 gap-3">
-						<label class="floating-label"><span>Latitude</span>
-							<input class="input w-full" bind:value={place.latitude} placeholder="Latitude" inputmode="decimal" autocomplete="off" /></label>
-						<label class="floating-label"><span>Longitude</span>
-							<input class="input w-full" bind:value={place.longitude} placeholder="Longitude" inputmode="decimal" autocomplete="off" /></label>
-					</div>
-					<label class="floating-label"><span>Time zone</span>
-						<input class="input w-full" bind:value={place.timezone} placeholder="Time zone, e.g. Europe/Amsterdam" autocomplete="off" /></label>
 
 				{:else if step === 'services'}
 					<h1 class="text-2xl font-bold">What do your devices use?</h1>
@@ -174,7 +157,7 @@
 							<Discover {item} onchange={replace} />
 						</div>
 					{/each}
-					<p class="text-sm opacity-70">Matter devices are added on the System page with their setup code. Everything shows up under Devices.</p>
+					<p class="text-sm opacity-70">Matter devices are added under Integrations › Matter with their setup code. Everything shows up under Devices.</p>
 				{/if}
 
 				{#if error}<div role="alert" class="alert alert-error alert-soft text-sm">{error}</div>{/if}

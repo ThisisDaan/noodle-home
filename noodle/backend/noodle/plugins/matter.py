@@ -24,6 +24,7 @@ class MatterPlugin(Plugin):
     fields = [Field("matter_url", "Matter server address", "ws://127.0.0.1:5580/ws"),
               Field("otbr_url", "Thread border router address", "http://127.0.0.1:8082")]
     gated = True
+    panel = "matter"
     icon = "circle"
     order = 20
 

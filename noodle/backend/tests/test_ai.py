@@ -124,3 +124,51 @@ def test_home_name_is_in_the_live_snapshot_and_changes_are_pushed(client, monkey
     with client.websocket_connect("/api/ws") as ws:
         snapshot = ws.receive_json()
         assert snapshot["type"] == "snapshot" and snapshot["home_name"] == "Our house"
+
+
+def _rpc(client, method, params=None, id_=1, **kw):
+    msg = {"jsonrpc": "2.0", "method": method, **({"id": id_} if id_ is not None else {}), **({"params": params} if params else {})}
+    return client.post("/mcp", json=msg, **kw)
+
+
+def test_mcp_needs_a_login():
+    assert _rpc(TestClient(main.app), "ping").status_code == 401
+
+
+def test_mcp_handshake_and_tools(client):
+    init = _rpc(client, "initialize").json()["result"]
+    assert init["serverInfo"]["name"] == "noodle" and "tools" in init["capabilities"]
+    assert _rpc(client, "notifications/initialized", id_=None).status_code == 202
+    names = {t["name"] for t in _rpc(client, "tools/list").json()["result"]["tools"]}
+    assert names == {"get_context", "list_devices", "list_flows", "validate_flow", "import_flow"}
+    assert "error" in _rpc(client, "nope").json()
+
+
+def test_mcp_write_a_flow_end_to_end(client):
+    def call(name, **args):
+        return _rpc(client, "tools/call", {"name": name, "arguments": args}).json()["result"]
+
+    assert "zigbee:test-lamp" in call("get_context")["content"][0]["text"]
+    assert call("validate_flow", yaml=FLOW)["isError"] is False
+    assert call("validate_flow", yaml="id: ai-bad\nname: x\nnodes: [oops]\n")["isError"] is True
+    assert call("import_flow", yaml=FLOW)["isError"] is False
+    assert main.flows.flows["ai-lamp"]["enabled"] is False
+    assert call("import_flow", yaml=FLOW)["isError"] is True  # exists, no replace
+    assert any(f["id"] == "ai-lamp" for f in json.loads(call("list_flows")["content"][0]["text"]))
+    assert call("nope")["isError"] is True
+
+
+def test_each_ai_gets_its_own_token_that_can_be_removed(client):
+    anonymous = TestClient(main.app)
+    assert anonymous.post("/api/ai/connections", json={"name": "x"}).status_code == 401
+    first = client.post("/api/ai/connections", json={"name": "Claude Code"}).json()
+    second = client.post("/api/ai/connections", json={"name": "Cursor"}).json()
+    assert [c["name"] for c in second["connections"]] == ["Claude Code", "Cursor"]
+    assert "token" not in client.get("/api/ai/connections").text
+    auth = lambda t: {"Authorization": f"Bearer {t}"}  # noqa: E731
+    assert _rpc(anonymous, "ping", headers=auth(first["token"])).status_code == 200
+    gone = client.delete(f"/api/ai/connections/{second['connections'][0]['id']}").json()
+    assert [c["name"] for c in gone["connections"]] == ["Cursor"]
+    assert _rpc(anonymous, "ping", headers=auth(first["token"])).status_code == 401
+    assert _rpc(anonymous, "ping", headers=auth(second["token"])).status_code == 200
+    assert client.delete("/api/ai/connections/nope").status_code == 404

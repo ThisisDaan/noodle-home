@@ -12,6 +12,12 @@ export type Entity = {
 	group?: string | null;
 	/** Extra readings by kind: colour, cover position, thermostat modes (backend capabilities.py). */
 	attrs?: Record<string, any>;
+	/** A dimmer input: which way it turns the light. Set by the hub from the name, the same for every brand. */
+	role?: 'increase' | 'decrease' | null;
+	/** Unix time the state last changed (a button: when it was last pressed). Sent with the device, so cards never ask for it. */
+	changed?: number | null;
+	/** The last known state while the current one is unknown (a sensor that has not reported since a restart). */
+	last?: boolean | number | string | null;
 };
 
 export type Device = {
@@ -78,8 +84,10 @@ export function formatState(e: Entity): string {
 	if (e.state === null || e.state === undefined) return '–';
 	if (e.kind === 'binary_sensor') {
 		if (e.device_class === 'occupancy') return e.state ? 'Motion' : 'Clear';
+		// The hub's own "presence" (motion that holds for a few minutes) only knows about motion, not people.
+		if (e.device_class === 'presence' && e.key === 'presence') return e.state ? 'Motion detected' : 'No motion';
 		if (e.device_class === 'presence') return e.state ? 'Someone there' : 'Empty';
-		if (e.device_class === 'contact') return e.state ? 'Open' : 'Closed';
+		if (['contact', 'door', 'window', 'opening', 'garage_door'].includes(e.device_class ?? '')) return e.state ? 'Open' : 'Closed';
 		if (e.device_class === 'heat') return e.state ? 'Heating' : 'Idle';
 		return e.state ? 'On' : 'Off';
 	}

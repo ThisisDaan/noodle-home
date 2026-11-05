@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import aicontext, config, flowfiles, integrations, notify, plugins, updates
+from . import aicontext, config, flowfiles, integrations, mcp, notify, plugins, updates
 from .plugins import PressButton
 from .flows import FlowEngine
 from .discovery import Discovery
@@ -211,6 +211,29 @@ def auth_app(body: AppLoginBody, request: Request) -> dict:
         raise HTTPException(401, "Wrong password")
     _failed.pop(client, None)
     return {"token": store.add_app_token(body.name)}
+
+
+class AiConnectionBody(BaseModel):
+    name: str = Field("AI assistant", min_length=1, max_length=40)
+
+
+@app.get("/api/ai/connections", dependencies=[Depends(require_login)])
+def ai_connections() -> list[dict]:
+    """The AI tools that have been given access to /mcp."""
+    return store.app_tokens("ai")
+
+
+@app.post("/api/ai/connections", dependencies=[Depends(require_login)])
+def ai_connect(body: AiConnectionBody) -> dict:
+    """Give one AI tool its own token (shown once), made from a logged-in session so the password is not asked again."""
+    return {"token": store.add_app_token(body.name, "ai"), "connections": store.app_tokens("ai")}
+
+
+@app.delete("/api/ai/connections/{token_id}", dependencies=[Depends(require_login)])
+def ai_disconnect(token_id: str) -> dict:
+    if not store.remove_app_token(token_id, "ai"):
+        raise HTTPException(404, "No such connection")
+    return {"connections": store.app_tokens("ai")}
 
 
 @app.get("/api/auth/session", include_in_schema=False)
@@ -562,6 +585,16 @@ def flow_context(format: str = "json"):
     return PlainTextResponse(aicontext.markdown(context)) if format == "markdown" else context
 
 
+app.include_router(mcp.router(
+    require_login,
+    context=lambda: aicontext.markdown(aicontext.build(hub, flows, store)),
+    devices=lambda: aicontext.devices(hub),
+    flows=lambda: flows.summary(),
+    validate=lambda text: aicontext.check(text, hub),
+    import_flow=lambda text, replace: flow_import(ImportBody(yaml=text, replace=replace)),
+))
+
+
 @app.get("/api/flows", dependencies=[Depends(require_login)])
 async def list_flows() -> list[dict]:
     return flows.summary()
@@ -621,7 +654,7 @@ def flow_log(flow_id: str) -> list[dict]:
 
 @app.get("/api/system", dependencies=[Depends(require_login)])
 async def system() -> dict:
-    """One entry per integration with something to show, by its id (zigbee, matter, docker, ...)."""
+    """One entry per integration with something to show, by its id (zigbee, matter, ...). The Integrations page shows it."""
     async def info(plugin):
         result = plugin.system_info(ADAPTERS.get(plugin.source))
         return await result if inspect.isawaitable(result) else result
