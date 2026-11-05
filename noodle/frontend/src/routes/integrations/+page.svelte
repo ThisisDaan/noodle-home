@@ -9,9 +9,11 @@
 	let open = $state<string | null>(null); // the integration whose settings are showing
 	let picker = $state(false);
 
-	const added = $derived(items.filter((i) => i.added && !i.always));
+	// The integration being set up in the dialog. It only joins the list once it is connected or has a device.
+	let draftId = $state<string | null>(null);
+	const draft = $derived(items.find((i) => i.id === draftId) ?? null);
+	const added = $derived(items.filter((i) => i.added && !i.always && i.id !== draftId));
 	const available = $derived(items.filter((i) => !i.added && !i.always));
-	const hub = $derived(items.find((i) => i.always));
 
 	$effect(() => {
 		api<Integration[]>('/integrations').then((list) => {
@@ -24,9 +26,28 @@
 
 	async function add(item: Integration) {
 		picker = false;
+		draftId = item.id;
 		replace(await api<Integration>(`/integrations/${item.id}/add`, { body: {} }));
-		open = item.id;
-		setTimeout(() => document.getElementById(`int-${item.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+	}
+
+	// Something is connected: the service answers, or a device was found, paired or added.
+	const ready = (i: Integration) =>
+		i.connected === true || !!(i.devices?.length || i.bulbs?.length || i.sensors?.length || i.paired) || (!i.searchable && !i.panel);
+
+	// Settings to fill in: the dialog then has Cancel and Save. Otherwise (search, pairing) it has Cancel and Done.
+	const hasFields = (i: Integration) => !i.custom_form && i.fields.some((f) => !f.hidden && !f.advanced);
+
+	async function finish() {
+		const id = draftId;
+		draftId = null;
+		open = id;
+		setTimeout(() => document.getElementById(`int-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+	}
+
+	async function cancel() {
+		const id = draftId;
+		draftId = null;
+		if (id) replace(await api<Integration>(`/integrations/${id}`, { method: 'DELETE' }));
 	}
 
 	const label = (c: boolean | null) => (c === true ? 'Connected' : c === false ? 'Not connected' : 'Set it up');
@@ -67,16 +88,6 @@
 			</div>
 		{/each}
 
-		{#if hub}
-			<div class="card bg-base-100 border-base-content/10 border">
-				<button class="flex items-center gap-3 p-4 text-left" onclick={() => (open = open === hub.id ? null : hub.id)} aria-expanded={open === hub.id}>
-					<span class="icon-bubble size-11"><Icon name={hub.icon} class="size-5" /></span>
-					<span class="grow font-bold">{hub.name}</span>
-					<Icon name={open === hub.id ? 'up' : 'down'} class="size-5 opacity-60" />
-				</button>
-				{#if open === hub.id}<div class="px-4 pb-4"><IntegrationForm item={hub} onchange={replace} /></div>{/if}
-			</div>
-		{/if}
 	</div>
 {/if}
 
@@ -98,6 +109,29 @@
 					<Icon name="right" class="size-5 opacity-50" />
 				</button>
 			{/each}
+		</div>
+	</div>
+{/if}
+
+{#if draft}
+	<div class="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+		<button class="absolute inset-0 bg-black/50" aria-label="Cancel" onclick={cancel}></button>
+		<div class="bg-base-100 relative flex max-h-[90dvh] w-full max-w-lg flex-col gap-3 overflow-y-auto rounded-t-2xl p-4 pb-6 sm:rounded-2xl">
+			<div class="flex items-center gap-3">
+				<span class="icon-bubble size-11"><Icon name={draft.icon} class="size-5" /></span>
+				<h2 class="grow text-lg font-bold">Add {draft.name}</h2>
+				<button class="btn btn-ghost btn-sm btn-circle" aria-label="Cancel" onclick={cancel}><Icon name="close" class="size-5" /></button>
+			</div>
+			<IntegrationForm item={draft} onchange={replace} removable={false} formId="setup-form" hideActions onsaved={finish} />
+			<div class="flex items-center justify-end gap-2">
+				{#if !hasFields(draft) && !ready(draft)}<span class="grow text-xs opacity-60">It is added to your list once it is connected.</span>{/if}
+				<button class="btn" onclick={cancel}>Cancel</button>
+				{#if hasFields(draft)}
+					<button class="btn btn-primary" type="submit" form="setup-form">Save</button>
+				{:else}
+					<button class="btn btn-primary" disabled={!ready(draft)} onclick={finish}>Done</button>
+				{/if}
+			</div>
 		</div>
 	</div>
 {/if}

@@ -85,6 +85,18 @@ THERMOSTAT_SENSOR_DEVICE = THERMOSTAT_SENSOR_KEY = THERMOSTAT_HEATER_DEVICE = TH
 # does not reach them. Nothing searches except when the user presses Search.
 LIFX_BULBS = dict(item.split("=", 1) for item in os.environ.get("LIFX_BULBS", "").split(",") if "=" in item)
 LIFX_HOSTS: list[str] = [h.strip() for h in os.environ.get("LIFX_HOSTS", "").split(",") if h.strip()]
+# Devices reached by address (adapters/lan.py): what the user added, as {key: address}. Nanoleaf also keeps the
+# token each one gave when it was paired.
+def _pairs(name: str) -> dict:
+    return dict(item.split("=", 1) for item in os.environ.get(name, "").split(",") if "=" in item)
+
+
+SHELLY_DEVICES, WLED_DEVICES, KASA_DEVICES = _pairs("SHELLY_DEVICES"), _pairs("WLED_DEVICES"), _pairs("KASA_DEVICES")
+SONOS_DEVICES, NANOLEAF_DEVICES, NANOLEAF_TOKENS = _pairs("SONOS_DEVICES"), _pairs("NANOLEAF_DEVICES"), _pairs("NANOLEAF_TOKENS")
+# Home Assistant (a long-lived token), the IKEA DIRIGERA hub (the token pairing gave), and the MQTT discovery topic.
+HA_URL, HA_TOKEN = os.environ.get("HA_URL", ""), os.environ.get("HA_TOKEN", "")
+DIRIGERA_HOST, DIRIGERA_TOKEN = os.environ.get("DIRIGERA_HOST", ""), os.environ.get("DIRIGERA_TOKEN", "")
+MQTT_DISCOVERY_PREFIX = os.environ.get("MQTT_DISCOVERY_PREFIX", "homeassistant")
 # Room names used to guess a device's area from its name ("Keuken Lamp" -> Keuken).
 DEFAULT_AREAS = ["Living room", "Kitchen", "Bedroom", "Bathroom", "Hallway", "Garden"]
 
@@ -115,9 +127,15 @@ SETTINGS: dict[str, tuple[str, str, str | None]] = {
     "thermostat_heater_device": ("THERMOSTAT_HEATER_DEVICE", "str", "thermostat"),
     "thermostat_heater_key": ("THERMOSTAT_HEATER_KEY", "str", "thermostat"),
     "lifx_hosts": ("LIFX_HOSTS", "list", "lifx"), "lifx_bulbs": ("LIFX_BULBS", "pairs", "lifx"),
+    "shelly_devices": ("SHELLY_DEVICES", "pairs", "shelly"), "wled_devices": ("WLED_DEVICES", "pairs", "wled"),
+    "kasa_devices": ("KASA_DEVICES", "pairs", "kasa"), "sonos_devices": ("SONOS_DEVICES", "pairs", "sonos"),
+    "nanoleaf_devices": ("NANOLEAF_DEVICES", "pairs", "nanoleaf"), "nanoleaf_tokens": ("NANOLEAF_TOKENS", "pairs", "nanoleaf"),
+    "ha_url": ("HA_URL", "str", "homeassistant"), "ha_token": ("HA_TOKEN", "str", "homeassistant"),
+    "dirigera_host": ("DIRIGERA_HOST", "str", "dirigera"), "dirigera_token": ("DIRIGERA_TOKEN", "str", "dirigera"),
+    "mqtt_discovery_prefix": ("MQTT_DISCOVERY_PREFIX", "str", "mqtt"),
     "ble_sensors": ("BLE_SENSORS", "pairs", "ble"), "integrations": ("INTEGRATIONS", "list", None),
 }
-SECRET_KEYS = {"hue_key", "ntfy_topic"}  # kept in secrets.yaml, not in settings.yaml
+SECRET_KEYS = {"hue_key", "ntfy_topic", "nanoleaf_tokens", "ha_token", "dirigera_token"}  # kept in secrets.yaml, not in settings.yaml
 _DEFAULTS = {attr: globals()[attr] for attr, _, _ in SETTINGS.values()} | {"LOCATION_SET": LOCATION_SET}
 _SETTINGS = YamlFile(CONFIG_DIR / "settings.yaml")
 _SECRETS = YamlFile(CONFIG_DIR / "secrets.yaml", private=True)

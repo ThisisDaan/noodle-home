@@ -1,8 +1,9 @@
 <script lang="ts">
+	import DeviceCard from '#lib/DeviceCard.svelte';
 	import Icon from '#lib/Icon.svelte';
-	import { ago, headline, iconFor, isOn, type Device } from '#lib/api.ts';
+	import type { Device } from '#lib/api.ts';
 	import { groupEditor } from '#lib/groups.svelte.ts';
-	import { layout, ui } from '#lib/layout.svelte.ts';
+	import { layout } from '#lib/layout.svelte.ts';
 	import { live } from '#lib/live.svelte.ts';
 
 	let query = $state('');
@@ -56,25 +57,7 @@
 </script>
 
 {#snippet tile(d: Device)}
-	<button class="tile flex items-center gap-3 p-3.5 text-left" class:is-on={isOn(d)} class:opacity-60={!d.available}
-		onclick={() => ui.open(d.id)} aria-label="Open {d.name}">
-		<span class="icon-bubble"><Icon name={iconFor(d)} /></span>
-		<span class="min-w-0 grow">
-			<span class="block truncate font-semibold">{d.name}</span>
-			<span class="block truncate text-sm opacity-70">{headline(d)}</span>
-			<span class="block truncate text-xs opacity-50">
-				<span class="uppercase">{d.source}</span> · {d.manufacturer ?? ''} {d.model ?? ''} · {ago(d.last_seen)}
-			</span>
-		</span>
-		<span class="flex shrink-0 flex-col items-end gap-1">
-			<span class="status" class:status-success={d.available} class:status-error={!d.available}></span>
-			{#if d.battery !== null}
-				<span class="flex items-center gap-1 text-xs" class:text-warning={d.battery < 20}>
-					<Icon name="battery" class="size-4" />{d.battery}%
-				</span>
-			{/if}
-		</span>
-	</button>
+	<DeviceCard device={d} />
 {/snippet}
 
 <div class="mb-5 flex flex-wrap items-center gap-3">
@@ -119,7 +102,7 @@
 				{g.title} <span class="badge badge-ghost badge-sm">{g.devices.length}</span>
 			</h2>
 		{/if}
-		<div class="grid grid-cols-[repeat(auto-fill,minmax(20rem,1fr))] gap-3">
+		<div class="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-3">
 			{#each g.devices as d (d.id)}{@render tile(d)}{/each}
 		</div>
 	</section>

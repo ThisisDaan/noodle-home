@@ -22,6 +22,7 @@ class ZigbeePlugin(Plugin):
               Field("z2m_base_topic", "Zigbee2MQTT base topic", "zigbee2mqtt"),
               Field("z2m_url", "Zigbee2MQTT web address (optional)", "http://192.168.1.10:8081")]
     gated = True
+    panel = "zigbee"
     searchable = True
     noun = "Zigbee devices"
     search_hint = "Put your device in pairing mode now (often hold its button for 5 seconds)."

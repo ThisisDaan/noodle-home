@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PowerButton from './devices/PowerButton.svelte';
 	import { command, type CommandBody, formatState, type Device, type Entity } from './api';
 
 	let { device, entity }: { device: Device; entity: Entity } = $props();
@@ -97,11 +98,11 @@
 	</div>
 {:else if entity.kind === 'light' || entity.kind === 'switch' || entity.kind === 'fan'}
 	<div class="flex flex-col gap-2">
-		<label class="flex items-center justify-between gap-3">
+		<div class="flex items-center justify-between gap-3">
 			<span class="text-sm">{entity.kind === 'light' ? 'Light' : entity.kind === 'fan' ? 'Fan' : 'Power'}</span>
-			<input type="checkbox" class="toggle toggle-primary" checked={on} disabled={busy || !device.available}
-				onchange={(e) => send({ on: e.currentTarget.checked })} />
-		</label>
+			<PowerButton {on} label={entity.name}
+				disabled={busy || !device.available} onclick={() => send({ on: !on })} />
+		</div>
 		{#if entity.kind === 'light' && entity.brightness !== null}
 			<div class="flex items-center gap-3">
 				<input type="range" min="1" max="100" class="range range-primary range-xs grow" value={shown}

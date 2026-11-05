@@ -3,7 +3,7 @@
 	import HistoryChart from './HistoryChart.svelte';
 	import Icon from './Icon.svelte';
 	import DeviceFace from './devices/DeviceFace.svelte';
-	import { deviceKind, faceEntities } from './devices/kinds.ts';
+	import { faceEntities, sheetFace } from './devices/kinds.ts';
 	import { ago, api, controllable, formatState, headline, iconFor, isOn } from './api';
 	import { groupEditor } from './groups.svelte';
 	import { layout, ui } from './layout.svelte';
@@ -33,7 +33,7 @@
 	// What the face at the top already shows is left out of the lists below; battery, the device's own temperature
 	// and the rest stay there as properties.
 	const faced = $derived(new Set(device ? faceEntities(device).map((e) => e.key) : []));
-	const hasFace = $derived(!!device && ['climate', 'motion', 'button'].includes(deviceKind(device)));
+	const hasFace = $derived(!!device && sheetFace(device));
 	const readings = $derived(device?.entities.filter((e) => !controllable(e) && e.kind !== 'button' && !faced.has(e.key)) ?? []);
 	const buttons = $derived(device?.entities.filter((e) => e.kind === 'button' && e.state !== null && !faced.has(e.key)) ?? []);
 	const dirty = $derived(

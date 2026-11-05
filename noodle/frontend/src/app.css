@@ -243,17 +243,21 @@ button:disabled,
 	stroke-width: 5;
 	filter: drop-shadow(0 0 5px var(--w, var(--flow-line)));
 }
-/* Hovering a wire greys out all the others, so it is easy to follow where it goes (mouse only: on a phone
-   "hover" would stay on the last tapped wire). */
+/* A wire the pointer has rested on for a moment (see FOCUS_AFTER_MS in the flow page) fades all the others, so it is
+   easy to follow where it goes. Sweeping over wires does not trigger it. Mouse only: on a phone "hover" would stay
+   on the last tapped wire. */
 @media (hover: hover) {
-	.svelte-flow:has(.svelte-flow__edge:hover) .svelte-flow__edge:not(:hover):not(.selected) .svelte-flow__edge-path {
+	.wire-focus .svelte-flow__edge:not(.focused):not(.selected) .svelte-flow__edge-path {
 		stroke: var(--color-base-content) !important;
 		opacity: 0.15 !important;
 		filter: none;
-		transition: opacity 0.15s;
+		transition: opacity 0.2s;
 	}
-	.svelte-flow:has(.svelte-flow__edge:hover) .svelte-flow__edge:not(:hover):not(.selected) .wire-energy {
+	.wire-focus .svelte-flow__edge:not(.focused):not(.selected) .wire-energy {
 		opacity: 0 !important;
+	}
+	.svelte-flow .svelte-flow__edge.focused .svelte-flow__edge-path {
+		stroke-width: 5;
 	}
 }
 /* Energy flowing through a wire: short bright pulses run towards the target. Slow while the output is true right

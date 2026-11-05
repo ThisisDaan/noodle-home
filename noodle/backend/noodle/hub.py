@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Awaitable, Callable, Protocol
@@ -40,6 +41,19 @@ class Entity:
     actions: list[str] | None = None  # buttons: what this button can send, e.g. ["single", "double", "hold"]
     group: str | None = None  # inputs that belong together, e.g. one profile of a multi-profile remote
     attrs: dict = field(default_factory=dict)  # extra readings by kind, e.g. a cover's position (capabilities.py)
+    role: str | None = None  # a dimmer input: "increase" or "decrease" (set from the name, see __post_init__)
+    last: Any = None  # the last known state while the current one is unknown (a sensor that has not reported since a restart)
+    changed: float | None = None  # when the state last changed (a button: when it was last pressed), kept across restarts
+
+    def __post_init__(self) -> None:
+        # Every remote names its dimmer inputs differently (Dimmer increase, Brighter, up, ...): say which way each
+        # one goes, once, so the interface treats every dimmer the same way.
+        if self.kind == "button" and self.role is None:
+            text = f"{self.key} {self.name}".lower()
+            if re.search(r"increase|brighter|(^|[^a-z])up($|[^a-z])", text):
+                self.role = "increase"
+            elif re.search(r"decrease|dimmer|(^|[^a-z])down($|[^a-z])", text):
+                self.role = "decrease"
 
 
 @dataclass
@@ -110,15 +124,20 @@ class Hub:
 
     def event(self, device: Device, key: str, action: str, data: dict | None = None) -> None:
         """Adapters call this for momentary things like button presses."""
-        self._record(device, key, action)
+        ts = self._record(device, key, action)
+        if entity := device.entities.get(key):  # remember the last press, and tell the open pages about it
+            entity.changed = ts or time.time()
+            self.store.set_since(device.id, key, repr(action), entity.changed)
+            self.broadcast({"type": "device", "device": device.as_dict()})
         for listener in self._event_listeners:
             listener(device, key, action, data or {})
 
-    def _record(self, device: Device, key: str, value) -> None:
+    def _record(self, device: Device, key: str, value) -> float | None:
         """Store a history row and push it to the open pages, so graphs grow without asking again."""
         ts = self.store.add_history(device.id, key, value)
         if ts is not None:
             self.broadcast({"type": "history", "device_id": device.id, "key": key, "ts": ts, "value": value})
+        return ts
 
     def since(self, device_id: str, key: str) -> float | None:
         """Unix time since which the entity has had its current state."""
@@ -136,8 +155,26 @@ class Hub:
 
     def _track_entity(self, device: Device, entity: Entity, now: float) -> None:
         if entity.kind == "button":
+            if entity.changed is None:  # the last press, from before a restart
+                stored = self.store.since(device.id, entity.key)
+                last = self.store.last_history(device.id, entity.key) if not stored else None
+                if stored:
+                    entity.changed = stored[1]
+                    if entity.state is None and stored[0][:1] == "'":
+                        entity.state = stored[0][1:-1]
+                elif last:
+                    entity.changed = last[0]
+                    if entity.state is None and isinstance(last[1], str):
+                        entity.state = last[1]
             return
         ident = (device.id, entity.key)
+        entity.changed = self._since.get(ident, entity.changed)
+        if entity.changed is None:  # known from before a restart, even if the sensor has not reported since
+            stored = self.store.since(device.id, entity.key)
+            last = None if stored else self.store.last_history(device.id, entity.key)
+            entity.changed = stored[1] if stored else (last[0] if last else None)
+        if entity.state is None and entity.last is None and (known := self.store.last_history(device.id, entity.key)):
+            entity.last = known[1]
         if entity.state is None:
             # Known entity, unknown state (e.g. Zigbee sensors until their first report).
             self._known.setdefault(ident, None)
@@ -158,6 +195,7 @@ class Hub:
                 self._since[ident] = stored[1]
             else:
                 self._since[ident] = now
+                entity.changed = now
                 self.store.set_since(device.id, entity.key, repr(entity.state), now)
         if old is ...:
             return  # first sighting is not a change

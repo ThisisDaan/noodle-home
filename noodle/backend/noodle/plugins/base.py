@@ -22,6 +22,9 @@ class Field:
     label: str
     placeholder: str = ""
     secret: bool = False  # never sent back to the browser
+    hidden: bool = False  # not in the settings form: the integration's panel sets it (the map sets the location)
+    help: str = ""  # a sentence under the input
+    advanced: bool = False  # tucked under "Advanced", after the integration's panel
 
 
 @dataclass

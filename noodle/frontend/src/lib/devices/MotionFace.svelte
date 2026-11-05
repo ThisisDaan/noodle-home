@@ -1,15 +1,19 @@
 <script lang="ts">
 	import { formatState, type Device } from '../api.ts';
 	import Icon from '../Icon.svelte';
-	import { isMotion } from './kinds.ts';
-	import { lastChanges } from './last.svelte.ts';
+	import { presenceEntity } from './kinds.ts';
+	import { agoText, useClock } from './clock.svelte.ts';
 
-	/** Whether there is motion (or someone there) right now, and since when. */
+	/** Whether someone is there right now (presence, which holds for a few minutes after the last motion). tile: a
+	 * status bar on a card, which lights up while someone is there; large: the top of the device sheet, with since when. */
 	let { device, size = 'tile' }: { device: Device; size?: 'tile' | 'large' } = $props();
 
-	const last = lastChanges(() => device.id);
-	const entity = $derived(device.entities.find((e) => isMotion(e) && e.device_class === 'occupancy') ?? device.entities.find(isMotion));
-	const active = $derived(device.available && entity?.state === true);
+	const clock = useClock();
+	const entity = $derived(presenceEntity(device));
+	const unknown = $derived(entity?.state === null || entity?.state === undefined);
+	// Until the sensor reports again, show what it said last (dimmed) instead of nothing.
+	const shown = $derived(entity ? (unknown && entity.last != null ? { ...entity, state: entity.last } : entity) : undefined);
+	const active = $derived(device.available && !unknown && entity?.state === true);
 </script>
 
 {#if entity}
@@ -21,14 +25,17 @@
 					<Icon name="motion" class="size-8" />
 				</span>
 			</span>
-			<div class="text-2xl font-bold">{formatState(entity)}</div>
-			<div class="text-sm opacity-60">{last.get(entity.key) ? `since ${last.ago(entity.key)}` : 'no activity recorded yet'}</div>
+			<div class="text-2xl font-bold" class:opacity-50={unknown}>{shown ? formatState(shown) : '–'}</div>
+			<div class="text-sm opacity-60">{entity.changed ? (entity.state === null ? `last activity ${agoText(entity.changed, clock.now)}` : `since ${agoText(entity.changed, clock.now).replace(' ago', '')}`) : 'no activity recorded yet'}</div>
 		</div>
 	{:else}
-		<div class="flex items-center gap-2" class:opacity-50={!device.available}>
-			<span class="status {active ? 'status-success' : 'status-neutral'}" class:animate-pulse={active}></span>
-			<span class="font-semibold">{formatState(entity)}</span>
-			<span class="text-xs opacity-60">{last.ago(entity.key)}</span>
+		<div class="rounded-box flex h-12 items-center gap-3 px-4 transition-colors {active ? 'bg-success/20 text-success' : 'bg-base-content/5'}"
+			class:opacity-50={!device.available}>
+			<span class="relative grid size-3 place-items-center">
+				{#if active}<span class="bg-success absolute inline-flex size-5 animate-ping rounded-full opacity-40"></span>{/if}
+				<span class="relative size-3 rounded-full {active ? 'bg-success' : 'bg-base-content/30'}"></span>
+			</span>
+			<span class="font-semibold" class:opacity-60={unknown}>{shown ? formatState(shown) : '–'}</span>
 		</div>
 	{/if}
 {/if}
