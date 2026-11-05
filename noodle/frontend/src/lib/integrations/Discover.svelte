@@ -1,18 +1,17 @@
 <script lang="ts">
 	import { fly, scale } from 'svelte/transition';
 	import Icon from '../Icon.svelte';
-	import { api } from '../api.ts';
+	import { api, ApiError } from '../api.ts';
 	import { live } from '../live.svelte.ts';
 	import type { Integration, SearchState } from './types.ts';
 
-	/** Search for new devices of one integration. Nothing searches until the button is pressed, then for half a
-	 * minute; the server pushes what it finds (nothing is polled). `noun` is what is being looked for, e.g. "bulbs". */
-	let { id, initial, noun = 'devices', onchange }: {
-		id: string;
-		initial?: SearchState;
-		noun?: string;
-		onchange: (updated: Integration) => void;
-	} = $props();
+	/** The one screen for adding devices, the same for every integration that can search (IntegrationForm shows it).
+	 * Nothing searches until the button is pressed, then for half a minute; the server pushes what it finds (nothing
+	 * is polled). Things that need a button pressed (Philips Hue) get the same "press the button" step. */
+	let { item, onchange }: { item: Integration; onchange: (updated: Integration) => void } = $props();
+	const id = $derived(item.id);
+	const noun = $derived(item.noun ?? 'devices');
+	const initial = $derived(item.search as SearchState | undefined);
 
 	const mountedAt = Date.now();
 	const search = $derived(live.discovery[id] ?? (initial ? { ...initial, at: mountedAt } : undefined));
@@ -46,8 +45,46 @@
 	}
 	const start = () => run(() => api(`/integrations/${id}/search`, { body: {} }), 'search');
 	const stop = () => run(() => api(`/integrations/${id}/search`, { method: 'DELETE' }), 'stop');
-	const add = (key: string) =>
-		run(async () => onchange(await api<Integration>(`/integrations/${id}/found/${encodeURIComponent(key)}/add`, { body: {} })), key);
+	const url = (key: string) => `/integrations/${id}/found/${encodeURIComponent(key)}/add`;
+
+	// Adding may need a button pressed on the device: the server answers 409 until it was, so ask again each second.
+	const PRESS_SECONDS = 30;
+	let press = $state<{ key: string; left: number; message: string } | null>(null);
+	let attempt = 0; // bumped to cancel a wait that is still running
+	$effect(() => () => void attempt++);
+
+	async function add(key: string) {
+		const mine = ++attempt;
+		const end = Date.now() + PRESS_SECONDS * 1000;
+		error = '';
+		busy = key;
+		try {
+			while (mine === attempt) {
+				try {
+					onchange(await api<Integration>(url(key), { body: {} }));
+					press = null;
+					return;
+				} catch (err) {
+					if (!(err instanceof ApiError && err.status === 409)) throw err;
+					press = { key, left: Math.max(0, Math.ceil((end - Date.now()) / 1000)), message: err.message };
+				}
+				if (Date.now() >= end) throw new Error('The button was not pressed in time.');
+				await new Promise((r) => setTimeout(r, 1000));
+			}
+		} catch (err) {
+			if (mine === attempt) {
+				press = null;
+				error = err instanceof Error ? err.message : String(err);
+			}
+		} finally {
+			if (mine === attempt) busy = null;
+		}
+	}
+	const cancelPress = () => {
+		attempt++;
+		press = null;
+		busy = null;
+	};
 
 	// Spread the dots that mark what was found around the radar, always in the same places for the same key.
 	function spot(key: string) {
@@ -65,8 +102,8 @@
 			<span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span>
 			<span class="sweep"></span>
 			<span class="core"><Icon name="wifi" class="size-6" /></span>
-			{#each found as item (item.key)}
-				<span class="blip" class:added={item.added} style={spot(item.key)} in:scale={{ duration: 350, start: 0.2 }}></span>
+			{#each found as f (f.key)}
+				<span class="blip" class:added={f.added} style={spot(f.key)} in:scale={{ duration: 350, start: 0.2 }}></span>
 			{/each}
 		</div>
 		<div class="min-w-0 grow">
@@ -94,18 +131,34 @@
 		{/if}
 	</div>
 
-	{#if found.length}
+	{#if searching && item.search_hint}
+		<p class="bg-base-200 rounded-box p-3 text-sm">{item.search_hint}</p>
+	{/if}
+
+	{#if press}
+		<div class="bg-base-200 rounded-box flex flex-col items-center gap-3 p-5 text-center" role="status">
+			<p class="font-medium">{item.press_hint || press.message}</p>
+			<div class="relative grid size-28 place-items-center">
+				<span class="bg-primary/40 absolute inline-flex size-24 animate-ping rounded-full"></span>
+				<span class="bg-primary/20 absolute inline-flex size-28 animate-pulse rounded-full"></span>
+				<span class="bg-primary text-primary-content relative grid size-20 place-items-center rounded-full text-sm font-bold">Press</span>
+			</div>
+			<progress class="progress progress-primary w-full" value={PRESS_SECONDS - press.left} max={PRESS_SECONDS}></progress>
+			<p class="text-xs opacity-60">Waiting for the button… {press.left}s left</p>
+			<button type="button" class="btn btn-ghost btn-sm" onclick={cancelPress}>Cancel</button>
+		</div>
+	{:else if found.length}
 		<ul class="flex flex-col gap-1" aria-live="polite">
-			{#each found as item (item.key)}
+			{#each found as f (f.key)}
 				<li class="bg-base-200 rounded-box flex items-center gap-3 p-3" in:fly={{ y: 10, duration: 250 }}>
 					<span class="min-w-0 grow">
-						<span class="block truncate font-medium">{item.name}</span>
-						{#if item.detail}<span class="block truncate text-xs opacity-60">{item.detail}</span>{/if}
+						<span class="block truncate font-medium">{f.name}</span>
+						{#if f.detail}<span class="block truncate text-xs opacity-60">{f.detail}</span>{/if}
 					</span>
-					{#if item.added}
+					{#if f.added}
 						<span class="text-success flex items-center gap-1 text-sm"><Icon name="check" class="size-4" />Added</span>
 					{:else}
-						<button type="button" class="btn btn-primary btn-sm" disabled={busy === item.key} onclick={() => add(item.key)}>Add</button>
+						<button type="button" class="btn btn-primary btn-sm" disabled={busy !== null} onclick={() => add(f.key)}>Add</button>
 					{/if}
 				</li>
 			{/each}

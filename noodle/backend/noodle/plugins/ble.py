@@ -23,6 +23,10 @@ class BlePlugin(Plugin):
     help = ("Temperature and humidity sensors that broadcast over Bluetooth (Xiaomi, Govee). This machine needs "
             "Bluetooth. Switch a sensor on near it, and it shows up in the list to add.")
     gated = True
+    searchable = True
+    noun = "Bluetooth sensors"
+    search_hint = "Put a battery in the sensor, or hold it near this machine."
+    restart_after_add = True
     icon = "bluetooth"
     panel = "ble"
     forget = ["ble_sensors"]
@@ -36,6 +40,15 @@ class BlePlugin(Plugin):
 
     def details(self, adapter):
         return {"sensors": adapter.sensor_list(), "error": adapter.error}
+
+    async def search(self, adapter, seconds, found):
+        await adapter.search(seconds, found)
+
+    async def add_found(self, adapter, key):
+        row = adapter.nearby.get(key.upper())
+        if row is None:
+            raise KeyError("That sensor is no longer in range; search again")
+        config.save({"ble_sensors": adapter.pairs_after(config.BLE_SENSORS, row["address"], row["name"] or row["kind"] or row["address"])})
 
     def on_remove(self, hub, adapter):
         for device_id in [d.id for d in hub.devices.values() if d.source == "ble"]:

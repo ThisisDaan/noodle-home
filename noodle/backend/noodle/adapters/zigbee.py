@@ -54,6 +54,7 @@ class ZigbeeAdapter:
         self.bridge: dict = {"online": False, "permit_join": False, "version": None}
         # Called with a name for messages on noodle/hook/<name> (or the older homepi/hook/<name>) (e.g. Hue presses forwarded by Home Assistant).
         self.on_hook = None
+        self.watchers: list = []  # called with each device that newly joins, while the user has a search open
 
     @staticmethod
     def _id(ieee: str) -> str:
@@ -136,7 +137,11 @@ class ZigbeeAdapter:
                         old = existing.entities[key]
                         entity.state, entity.brightness = old.state, old.brightness
                         entity.attrs = {**old.attrs, **entity.attrs}
+            is_new = existing is None
             self.hub.upsert(device)
+            if is_new:
+                for watcher in list(self.watchers):
+                    watcher(device)
         for device_id in [i for i, dev in self.hub.devices.items() if dev.source == self.source and i not in seen]:
             self.hub.remove(device_id)
         # Device states are not retained, so ask lights and switches for theirs.
@@ -308,6 +313,28 @@ class ZigbeeAdapter:
         if not payload:
             raise ValueError(f"nothing to send to {device.name}")
         await self.client.publish(f"{self.base}/{self.friendly[device.id]}/set", json.dumps(payload))
+
+    async def search(self, seconds: float, found) -> None:
+        """Let devices join for `seconds` and report each one that does. Zigbee2MQTT adds them itself, so they
+        are reported as already added."""
+        if not self.client:
+            raise RuntimeError("Not connected to the MQTT broker")
+        if not self.bridge.get("online"):
+            raise RuntimeError("Zigbee2MQTT is offline")
+
+        def joined(device: Device) -> None:
+            found(device.id, name=device.name, detail=" ".join(filter(None, [device.manufacturer, device.model])), added=True)
+
+        self.watchers.append(joined)
+        try:
+            await self.permit_join(min(254, int(seconds)))
+            await asyncio.sleep(seconds)
+        finally:
+            self.watchers.remove(joined)
+            try:
+                await self.permit_join(0)  # also when the user stops early
+            except Exception:
+                pass
 
     async def permit_join(self, seconds: int) -> None:
         if not self.client:

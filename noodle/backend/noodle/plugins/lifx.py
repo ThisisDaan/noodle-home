@@ -17,6 +17,8 @@ class LifxPlugin(Plugin):
     fields = [Field("lifx_hosts", "Extra addresses to search (optional)", "192.168.1.40, 192.168.1.41")]
     gated = True
     searchable = True
+    noun = "LIFX bulbs"
+    restart_after_add = False
     icon = "bulb"
     panel = "lifx"
     forget = ["lifx_hosts", "lifx_bulbs"]

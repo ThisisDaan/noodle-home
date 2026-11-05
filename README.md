@@ -39,7 +39,7 @@ After the first login a short setup wizard asks for your home's name and locatio
 
 ## Integrations
 
-Zigbee (through Zigbee2MQTT), Matter and Thread (python-matter-server and an OpenThread border router), Philips Hue (paired from the app), LIFX (found on the network, no cloud), Bluetooth temperature and humidity sensors, ntfy and in-app phone notifications, Google speakers (speak), and Docker containers (restart and logs). Heating is a flow: the Thermostat node watches a room sensor and switches a heater plug. Writing a new one is a single module, see "Writing an integration" below.
+Zigbee (through Zigbee2MQTT), Matter and Thread (python-matter-server and an OpenThread border router), Philips Hue (found and paired from the app), LIFX (found on the network, no cloud), Bluetooth temperature and humidity sensors, ntfy and in-app phone notifications, Google speakers (speak), and Docker containers (restart and logs). Heating is a flow: the Thermostat node watches a room sensor and switches a heater plug. Writing a new one is a single module, see "Writing an integration" below.
 
 ## Flows as files
 
@@ -108,6 +108,27 @@ PLUGIN = MyThingPlugin()
 ```
 
 Optional hooks: `preset()` (already set up counts as added), `routes()` (own API endpoints), `details()` and `panel` (extra panel on the page, a component listed in `frontend/src/lib/integrations/panels.ts`), `system_info()` (shown on the System page), `forget` and `on_remove()` (cleanup when removed). Add the setting keys to `SETTINGS` in `config.py` with the plugin id as section. The tests in `noodle/backend/tests` check that the pieces agree (`pip install -r requirements-dev.txt`, then `pytest`).
+
+### Finding devices
+
+Every integration adds devices the same way: a **Search** button that looks for 30 seconds, only when the user presses it, and a list of what it found with an Add button. Set `searchable = True` and implement two methods; the screen (radar, countdown, list) is shared and needs no code:
+
+```python
+    searchable = True
+    noun = "My things"                              # "Looking for My things…"
+    search_hint = "Hold the button on the thing."   # optional, shown while searching
+    press_hint = "Press the button on the hub."     # optional, for tap-to-pair devices
+
+    async def search(self, adapter, seconds, found):
+        found("aa:bb", name="Kitchen thing", detail="192.168.1.31")     # call it for each thing, as it turns up
+
+    async def add_found(self, adapter, key):
+        if not await adapter.try_pair(key):
+            raise PressButton("Press the button")   # the screen shows "press the button" and asks again for 30 s
+        config.save({"mything_host": key})
+```
+
+Devices that join by themselves (Zigbee2MQTT opens its network for the search) are reported with `found(..., added=True)` and need no `add_found`. Set `restart_after_add = True` if `add_found` changed settings the adapter reads.
 
 ## Develop
 

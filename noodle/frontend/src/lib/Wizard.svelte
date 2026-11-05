@@ -2,6 +2,7 @@
 	import Icon from './Icon.svelte';
 	import Logo from './Logo.svelte';
 	import { api } from './api.ts';
+	import Discover from './integrations/Discover.svelte';
 	import IntegrationForm from './integrations/IntegrationForm.svelte';
 	import LocationPanel from './integrations/LocationPanel.svelte';
 	import type { Integration } from './integrations/types.ts';
@@ -21,7 +22,6 @@
 	let loaded = $state(false);
 	let busy = $state(false);
 	let error = $state('');
-	let pairing = $state<{ ok: boolean; text: string } | null>(null);
 
 	const step = $derived(STEPS[index].id);
 	const hub = $derived(items.find((i) => i.always));
@@ -84,16 +84,6 @@
 			error = err instanceof Error ? err.message : String(err);
 		} finally {
 			busy = false;
-		}
-	}
-
-	async function permitJoin() {
-		pairing = null;
-		try {
-			await api('/zigbee/permit_join', { body: { seconds: 60 } });
-			pairing = { ok: true, text: 'Open for 60 seconds. Put your Zigbee device in pairing mode now; it shows up under Devices.' };
-		} catch (err) {
-			pairing = { ok: false, text: err instanceof Error ? err.message : String(err) };
 		}
 	}
 
@@ -177,12 +167,14 @@
 
 				{:else}
 					<h1 class="text-2xl font-bold">Add your first device</h1>
-					{#if added.some((i) => i.id === 'zigbee')}
-						<p class="text-sm opacity-70">For a Zigbee device: start pairing here, then put the device in pairing mode (see its manual, often holding a button for 5 seconds).</p>
-						<button class="btn btn-primary w-fit" onclick={permitJoin}>Pair a Zigbee device (60s)</button>
-						{#if pairing}<div role="alert" class="alert alert-soft text-sm {pairing.ok ? 'alert-success' : 'alert-error'}">{pairing.text}</div>{/if}
-					{/if}
-					<p class="text-sm opacity-70">Matter devices are added on the System page with their setup code, and Hue lights appear by themselves once the bridge is paired. Everything shows up under Devices.</p>
+					<p class="text-sm opacity-70">Search for new devices on each service you added. It only looks while you press the button.</p>
+					{#each added.filter((i) => i.searchable) as item (item.id)}
+						<div class="border-base-content/10 rounded-box border p-4">
+							<div class="mb-2 flex items-center gap-2 font-bold"><Icon name={item.icon} class="size-5" />{item.name}</div>
+							<Discover {item} onchange={replace} />
+						</div>
+					{/each}
+					<p class="text-sm opacity-70">Matter devices are added on the System page with their setup code. Everything shows up under Devices.</p>
 				{/if}
 
 				{#if error}<div role="alert" class="alert alert-error alert-soft text-sm">{error}</div>{/if}

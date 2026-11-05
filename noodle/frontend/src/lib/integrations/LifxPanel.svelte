@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { api } from '../api.ts';
-	import Discover from './Discover.svelte';
 	import type { Integration, PanelProps } from './types.ts';
 
 	let { item, onchange }: PanelProps = $props();
@@ -33,5 +32,4 @@
 		{/each}
 	</div>
 {/if}
-<Discover id="lifx" initial={item.search} noun="LIFX bulbs" {onchange} />
 {#if error}<div role="alert" class="alert alert-error alert-soft text-sm">{error}</div>{/if}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api } from '../api.ts';
+	import Discover from './Discover.svelte';
 	import { PANELS } from './panels.ts';
 	import type { Integration } from './types.ts';
 
@@ -54,6 +55,7 @@
 		{#if f.placeholder && !f.secret}<p class="-mt-2 text-xs opacity-50">Example: {f.placeholder}</p>{/if}
 	{/each}
 
+	{#if item.searchable}<Discover {item} {onchange} />{/if}
 	{#if Panel}<Panel {item} {onchange} />{/if}
 
 	{#if message}

@@ -20,6 +20,8 @@ def describe(item: Integration, plugin=None, adapter=None) -> dict:
     return {
         "id": item.id, "name": item.name, "help": item.help, "connected": item.status(), "icon": item.icon, "panel": item.panel,
         "custom_form": item.custom_form,
+        **({"noun": plugin.noun, "search_hint": plugin.search_hint, "press_hint": plugin.press_hint}
+           if plugin and plugin.searchable else {}),
         **(plugin.details(adapter) if plugin else {}),
         "added": item.always or item.id in added_ids(), "always": item.always,
         "fields": [{"key": f.key, "label": f.label, "placeholder": f.placeholder, "secret": f.secret,

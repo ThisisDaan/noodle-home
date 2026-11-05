@@ -32,6 +32,10 @@ export type Integration = {
 	sensors?: Sensor[];
 	bulbs?: Bulb[];
 	searchable?: boolean;
+	/** What a search looks for ("Hue bridges"), what to do on the device meanwhile, and the button to press. */
+	noun?: string;
+	search_hint?: string;
+	press_hint?: string;
 	search?: SearchState;
 	error?: string | null;
 	// Details of This hub (location panel)

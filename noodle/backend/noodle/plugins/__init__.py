@@ -6,9 +6,9 @@ import functools
 import importlib
 import pkgutil
 
-from .base import Field, Integration, Node, NodeField, Plugin
+from .base import Field, Integration, Node, NodeField, Plugin, PressButton
 
-__all__ = ["Field", "Integration", "Node", "NodeField", "Plugin", "discover", "node_types"]
+__all__ = ["Field", "Integration", "Node", "NodeField", "Plugin", "PressButton", "discover", "node_types"]
 
 
 @functools.cache

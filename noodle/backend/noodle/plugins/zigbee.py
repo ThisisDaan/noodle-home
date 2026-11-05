@@ -15,13 +15,16 @@ class ZigbeePlugin(Plugin):
     id = "zigbee"
     source = "zigbee"
     adapter_class = ZigbeeAdapter
-    name = "Zigbee (Zigbee2MQTT)"
+    name = "Zigbee2MQTT"
     help = ("Noodle talks to Zigbee2MQTT through an MQTT broker (for example Mosquitto). Point it at the broker "
             "Zigbee2MQTT uses. The web address is only for the links to Zigbee2MQTT's own pages.")
     fields = [Field("mqtt_host", "MQTT broker address", "127.0.0.1"), Field("mqtt_port", "MQTT port", "1883"),
               Field("z2m_base_topic", "Zigbee2MQTT base topic", "zigbee2mqtt"),
               Field("z2m_url", "Zigbee2MQTT web address (optional)", "http://192.168.1.10:8081")]
     gated = True
+    searchable = True
+    noun = "Zigbee devices"
+    search_hint = "Put your device in pairing mode now (often hold its button for 5 seconds)."
     icon = "wifi"
     order = 10
 
@@ -30,6 +33,9 @@ class ZigbeePlugin(Plugin):
 
     def preset(self):
         return True
+
+    async def search(self, adapter, seconds, found):
+        await adapter.search(seconds, found)
 
     def system_info(self, adapter):
         return {"connected": adapter.client is not None, **adapter.bridge}

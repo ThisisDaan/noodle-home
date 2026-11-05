@@ -42,12 +42,12 @@ def test_default_added_is_what_was_set_up(monkeypatch):
 def test_plugin_routes_are_mounted_and_need_login():
     from noodle import main
     paths = {r.path for r in main.app.routes}
-    for path in ("/api/zigbee/permit_join", "/api/matter/commission", "/api/hue/discover", "/api/hue/pair",
+    for path in ("/api/zigbee/permit_join", "/api/matter/commission",
                  "/api/ble/nearby", "/api/ble/sensors", "/api/ble/sensors/{address}"):
         assert path in paths, path
     client = TestClient(main.app)  # no lifespan: nothing connects
     assert client.get("/api/ble/nearby").status_code == 401
-    assert client.post("/api/hue/discover").status_code == 401
+    assert client.post("/api/integrations/hue/search").status_code == 401
     assert client.get("/api/integrations").status_code == 401
 
 
@@ -86,7 +86,7 @@ def test_plugin_node_runs_through_the_engine(monkeypatch):
 def test_integrations_tell_the_page_which_panel_and_icon_to_use():
     from noodle import main
     described = {i.id: main._describe(i) for i in main._integrations()}
-    assert described["hue"]["panel"] == "hue" and described["hue"]["custom_form"] is True
+    assert described["hue"]["panel"] is None and described["hue"]["searchable"] is True and described["hue"]["press_hint"]
     assert described["ble"]["panel"] == "ble" and "sensors" in described["ble"]
     assert described["ntfy"]["panel"] == "notify" and described["zigbee"]["panel"] is None
     assert all(d["icon"] for d in described.values())
@@ -106,3 +106,43 @@ def test_system_page_info_comes_from_the_plugins(monkeypatch):
     assert zigbee["connected"] is False and "online" in zigbee
     matter = asyncio.run(next(p for p in plugins.discover() if p.id == "matter").system_info(main.matter))
     assert matter["connected"] is False and "sdk_version" in matter and matter["thread"] == {"reachable": False}
+
+
+def test_every_searchable_integration_describes_the_same_search(monkeypatch):
+    from noodle import main
+    searchable = {p.id: p for p in plugins.discover() if p.searchable}
+    assert {"hue", "zigbee", "ble", "lifx"} <= set(searchable)
+    for plugin in searchable.values():
+        assert plugin.noun and plugin.noun != "devices", plugin.id
+    assert plugins.discover() and next(p for p in searchable.values() if p.id == "zigbee").name == "Zigbee2MQTT"
+
+
+def test_a_button_device_answers_409_until_pressed(monkeypatch):
+    import asyncio
+    from noodle import main
+    from noodle.plugins import PressButton
+    hue = next(p for p in main.PLUGINS if p.id == "hue")
+    calls = []
+
+    async def add_found(adapter, key):
+        calls.append(key)
+        if len(calls) < 2:
+            raise PressButton("Press the round button on top of the Hue bridge.")
+
+    monkeypatch.setattr(hue, "add_found", add_found)
+    monkeypatch.setattr(main.integrations, "added_ids", lambda: ["hue"])
+
+    async def go():
+        try:
+            await main.add_found("hue", "10.0.0.2")
+        except main.HTTPException as err:
+            assert err.status_code == 409
+        else:
+            raise AssertionError("expected 409")
+        assert (await main.add_found("hue", "10.0.0.2"))["id"] == "hue"
+
+    real = asyncio.sleep
+    monkeypatch.setattr(main, "restart_adapter", lambda s: real(0))
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(main.asyncio, "sleep", lambda s: real_sleep(0))
+    asyncio.run(go())

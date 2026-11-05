@@ -200,6 +200,19 @@ class BleAdapter:
             row.pop("time")
         return sorted(rows, key=lambda r: (r["kind"] is None, -(r["rssi"] or -200)))
 
+    async def search(self, seconds: float, found) -> None:
+        """Report the sensors heard during `seconds`. The listener runs anyway; this only lists what it hears."""
+        if self.error:
+            raise RuntimeError(f"Bluetooth is not available on this machine: {self.error}")
+        reported: set[str] = set()
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            for d in self.list_nearby():
+                if d["kind"] and not d["added"] and d["address"] not in reported:
+                    reported.add(d["address"])
+                    found(d["address"], name=d["name"] or d["kind"], detail=f"{d['kind']} · {d['address']}")
+            await asyncio.sleep(1)
+
     def sensor_list(self) -> list[dict]:
         out = []
         for mac, name in self.sensors.items():

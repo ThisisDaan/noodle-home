@@ -11,6 +11,11 @@ from typing import Any, Callable
 from .. import config
 
 
+class PressButton(Exception):
+    """Raised by `add_found` when the device waits for a button press (Philips Hue, ...). The page then shows
+    the same "press the button" screen for every integration and asks again until the button was pressed."""
+
+
 @dataclass
 class Field:
     key: str  # a key of config.SETTINGS
@@ -81,6 +86,10 @@ class Plugin:
     adapter_class: type | None = None
     source: str | None = None  # the adapter's `source`; None when there is no adapter
     searchable: bool = False  # the page has a Search button; see search() and add_found(), and discovery.py
+    noun: str = "devices"  # what a search looks for, for the interface: "bulbs", "sensors", ...
+    search_hint: str = ""  # shown while searching: what to do on the device (put it in pairing mode, ...)
+    press_hint: str = ""  # shown while waiting for the button, when add_found raises PressButton
+    restart_after_add: bool = False  # add_found changed settings, so the adapter reconnects
 
     def create_adapter(self, hub) -> Any:
         """The adapter that talks to the service (None if the plugin only has settings)."""
@@ -104,7 +113,9 @@ class Plugin:
         raise NotImplementedError
 
     async def add_found(self, adapter, key: str) -> None:
-        """The user added one of the things search() found."""
+        """The user added one of the things search() found. Raise PressButton if the device first needs a button
+        pressed; raise KeyError or ValueError with a message the user can read if it cannot be added. Things that
+        join by themselves (Zigbee) are reported as found(..., added=True) and need no add_found."""
         raise NotImplementedError
 
     def on_remove(self, hub, adapter) -> None:

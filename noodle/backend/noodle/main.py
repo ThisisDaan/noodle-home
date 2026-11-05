@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
 from . import aicontext, config, flowfiles, integrations, notify, plugins, updates
+from .plugins import PressButton
 from .flows import FlowEngine
 from .discovery import Discovery
 from .migrations import adopt_hue_buttons, retire_thermostat
@@ -770,8 +771,15 @@ async def add_found(integration_id: str, key: str) -> dict:
     plugin, adapter = _searchable(integration_id)
     try:
         await plugin.add_found(adapter, key)
+    except PressButton as err:
+        raise HTTPException(409, str(err) or plugin.press_hint)  # not an error: the page asks again
     except (KeyError, ValueError) as err:
         raise HTTPException(400, str(err.args[0]) if err.args else "Could not add that")
+    except Exception as err:
+        raise HTTPException(400, f"Could not add that: {err}")
+    if plugin.restart_after_add and plugin.source:
+        await restart_adapter(plugin.source)
+        await asyncio.sleep(2.5)  # give it a moment to connect, so the answer shows the result
     discovery.mark_added(integration_id, key)
     return _describe(_integration(integration_id))
 
