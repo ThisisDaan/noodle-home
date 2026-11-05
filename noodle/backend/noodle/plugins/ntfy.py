@@ -6,7 +6,7 @@ from .base import Field, Plugin
 
 class NtfyPlugin(Plugin):
     id = "ntfy"
-    name = "Notifications (ntfy)"
+    name = "Ntfy"
     help = ("Sends notifications to your phone through ntfy. The topic name is the secret: anyone who knows it "
             "can read along.")
     fields = [Field("ntfy_url", "Server", "https://ntfy.sh"), Field("ntfy_topic", "Topic", "my-secret-topic", secret=True)]

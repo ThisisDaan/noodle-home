@@ -146,3 +146,52 @@ def test_a_button_device_answers_409_until_pressed(monkeypatch):
     real_sleep = asyncio.sleep
     monkeypatch.setattr(main.asyncio, "sleep", lambda s: real_sleep(0))
     asyncio.run(go())
+
+
+def test_ntfy_timeout_is_retried_and_explained(monkeypatch):
+    import asyncio
+
+    import httpx
+
+    from noodle import config, notify
+    monkeypatch.setattr(config, "NTFY_TOPIC", "t")
+    calls = []
+
+    class Client:
+        def __init__(self, **kw): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, *a, **kw):
+            calls.append(1)
+            raise httpx.ConnectTimeout("")
+
+    monkeypatch.setattr(notify.httpx, "AsyncClient", Client)
+    try:
+        asyncio.run(notify._ntfy("m", "t", "default", "", None))
+    except RuntimeError as err:
+        assert "Could not reach ntfy" in str(err) and "ConnectTimeout" in str(err)
+    else:
+        raise AssertionError("expected an error")
+    assert len(calls) == 2
+
+
+def test_a_simulated_button_press_runs_like_a_real_one(monkeypatch):
+    from noodle import main
+    from noodle.hub import Device, Entity
+    device = Device(id="test:btn", source="zigbee", name="Remote",
+                    entities={"action": Entity(key="action", kind="button", name="Button", actions=["single", "hold"])})
+    main.hub.devices[device.id] = device
+    seen = []
+    main.hub.on_event(lambda d, key, action, data: seen.append((d.id, key, action, data)))
+    try:
+        main.press_button("test:btn", "action", main.PressBody(action="hold"))
+        assert device.entities["action"].state == "hold"
+        assert seen == [("test:btn", "action", "hold", {"simulated": True})]
+        try:
+            main.press_button("test:btn", "action", main.PressBody(action="triple"))
+        except main.HTTPException as err:
+            assert err.status_code == 400
+        else:
+            raise AssertionError("expected 400")
+    finally:
+        del main.hub.devices[device.id]

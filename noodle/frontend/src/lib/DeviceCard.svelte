@@ -1,5 +1,7 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
+	import DeviceFace from './devices/DeviceFace.svelte';
+	import { deviceKind } from './devices/kinds.ts';
 	import { command, headline, iconFor, isOn, type Device } from './api';
 	import { layout, ui } from './layout.svelte';
 
@@ -23,7 +25,9 @@
 	const primary = $derived(
 		device.entities.find((e) => e.kind === 'light') ?? device.entities.find((e) => e.kind === 'switch')
 	);
-	const level = $derived(device.entities.find((e) => e.kind === 'light' && e.brightness !== null));
+	const kind = $derived(deviceKind(device));
+	// Climate, motion and button tiles show their face instead of the one-line summary.
+	const summary = $derived(kind === 'light' || kind === 'generic');
 
 	async function flip(e: Event) {
 		e.stopPropagation();
@@ -73,7 +77,7 @@
 			<span class="icon-bubble"><Icon name={iconFor(device)} /></span>
 			<span class="min-w-0">
 				<span class="block truncate leading-tight font-semibold">{device.name}</span>
-				<span class="block truncate text-sm opacity-70">{headline(device)}</span>
+				{#if summary || !device.available}<span class="block truncate text-sm opacity-70">{headline(device)}</span>{/if}
 			</span>
 		</button>
 
@@ -91,12 +95,10 @@
 		{/if}
 	</div>
 
-	<div class="mt-auto flex items-center gap-2 text-xs opacity-70">
-		{#if level && on}
-			<progress class="progress progress-accent h-1.5 grow" value={level.brightness} max="100"></progress>
-		{:else}
-			<span class="grow"></span>
-		{/if}
+	{#if !editing}<div class="mt-auto"><DeviceFace {device} size="tile" /></div>{/if}
+
+	<div class="flex items-center gap-2 text-xs opacity-70" class:mt-auto={editing}>
+		<span class="grow"></span>
 		{#if !device.available}<span class="badge badge-error badge-soft badge-xs">offline</span>{/if}
 		{#if device.battery !== null}
 			<span class="flex items-center gap-1" class:text-warning={device.battery < 20}>

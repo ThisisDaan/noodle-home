@@ -268,6 +268,26 @@ async def command(device_id: str, key: str, body: CommandBody) -> dict:
     return {"ok": True}
 
 
+class PressBody(BaseModel):
+    action: str = Field(min_length=1, max_length=60)
+
+
+@app.post("/api/devices/{device_id}/entities/{key}/press", dependencies=[Depends(require_login)])
+def press_button(device_id: str, key: str, body: PressBody) -> dict:
+    """Act as if the button was pressed (the Devices page's test button): it shows as the last press, is
+    recorded in the history and runs the automations that listen to it. The device itself is not involved."""
+    device = hub.devices.get(device_id)
+    entity = device.entities.get(key) if device else None
+    if entity is None or entity.kind != "button":
+        raise HTTPException(404, "Unknown button")
+    if entity.actions and body.action not in entity.actions:
+        raise HTTPException(400, f"This button has no press called {body.action}")
+    entity.state = body.action
+    hub.changed(device)
+    hub.event(device, key, body.action, {"simulated": True})
+    return {"ok": True}
+
+
 @app.put("/api/devices/{device_id}", dependencies=[Depends(require_login)])
 def update_device(device_id: str, body: MetaBody) -> dict:
     if device_id not in hub.devices:

@@ -2,6 +2,8 @@
 	import EntityControl from './EntityControl.svelte';
 	import HistoryChart from './HistoryChart.svelte';
 	import Icon from './Icon.svelte';
+	import DeviceFace from './devices/DeviceFace.svelte';
+	import { deviceKind, faceEntities } from './devices/kinds.ts';
 	import { ago, api, controllable, formatState, headline, iconFor, isOn } from './api';
 	import { groupEditor } from './groups.svelte';
 	import { layout, ui } from './layout.svelte';
@@ -28,8 +30,12 @@
 
 	const device = $derived(ui.selected ? live.devices[ui.selected] : undefined);
 	const controls = $derived(device?.entities.filter(controllable) ?? []);
-	const readings = $derived(device?.entities.filter((e) => !controllable(e) && e.kind !== 'button') ?? []);
-	const buttons = $derived(device?.entities.filter((e) => e.kind === 'button' && e.state !== null) ?? []);
+	// What the face at the top already shows is left out of the lists below; battery, the device's own temperature
+	// and the rest stay there as properties.
+	const faced = $derived(new Set(device ? faceEntities(device).map((e) => e.key) : []));
+	const hasFace = $derived(!!device && ['climate', 'motion', 'button'].includes(deviceKind(device)));
+	const readings = $derived(device?.entities.filter((e) => !controllable(e) && e.kind !== 'button' && !faced.has(e.key)) ?? []);
+	const buttons = $derived(device?.entities.filter((e) => e.kind === 'button' && e.state !== null && !faced.has(e.key)) ?? []);
 	const dirty = $derived(
 		!!device && (name.trim() !== device.name || (area || null) !== device.area || newArea.trim() !== '' ||
 			(device.presence_minutes !== null && presence !== device.presence_minutes))
@@ -164,6 +170,8 @@
 					</div>
 				{/if}
 
+				{#if hasFace}<DeviceFace {device} size="large" />{/if}
+
 				{#if controls.length}
 					<section class="flex flex-col gap-3">
 						<h3 class="text-xs font-semibold tracking-wide uppercase opacity-60">Controls</h3>
@@ -175,7 +183,7 @@
 
 				{#if readings.length || buttons.length}
 					<section class="flex flex-col gap-2">
-						<h3 class="text-xs font-semibold tracking-wide uppercase opacity-60">Readings</h3>
+						<h3 class="text-xs font-semibold tracking-wide uppercase opacity-60">{hasFace ? 'Properties' : 'Readings'}</h3>
 						<div class="bg-base-200 rounded-box flex flex-col gap-2.5 p-3.5">
 							{#each readings as entity (entity.key)}<EntityControl {device} {entity} />{/each}
 							{#each buttons as entity (entity.key)}<EntityControl {device} {entity} />{/each}

@@ -57,8 +57,18 @@ async def _ntfy(message: str, title: str, priority: str, tags: str, buttons: lis
     if buttons:
         headers["Actions"] = "; ".join(
             f"http, {label.replace(',', ' ')}, {url}, method=POST, clear=true" for label, url in buttons[:3])
-    async with httpx.AsyncClient(timeout=10) as client:
-        response = await client.post(f"{config.NTFY_URL}/{config.NTFY_TOPIC}", content=message.encode("utf-8"),
-                                     headers=headers)
-        response.raise_for_status()
+    # One retry: a lone timeout on the internet link should not fail a whole automation.
+    for attempt in (1, 2):
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.post(f"{config.NTFY_URL}/{config.NTFY_TOPIC}", content=message.encode("utf-8"),
+                                             headers=headers)
+                response.raise_for_status()
+            break
+        except httpx.TransportError as err:  # timeouts and refused connections have no message of their own
+            if attempt == 1:
+                log.warning("ntfy not reachable (%s), trying again", err.__class__.__name__)
+                continue
+            raise RuntimeError(f"Could not reach ntfy at {config.NTFY_URL} ({err.__class__.__name__}). "
+                               "Check that this hub has internet access, or set a local ntfy address.") from err
     log.info("notification sent to ntfy: %s", title)
