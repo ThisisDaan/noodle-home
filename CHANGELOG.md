@@ -2,6 +2,10 @@
 
 The Noodle hub follows [semantic versioning](https://semver.org). The version is `__version__` in `noodle/backend/noodle/__init__.py`; a release is a git tag `vX.Y.Z` with the same number (the release workflow checks it).
 
+## 0.1.2
+
+- **One way to add devices.** Every integration that can find devices (Philips Hue, Zigbee2MQTT, Bluetooth, LIFX) has the same Search screen: a button that looks for 30 seconds, only when pressed. Hue shows the same "press the button" step as any tap-to-pair device. "Zigbee (Zigbee2MQTT)" is now just "Zigbee2MQTT".
+
 ## 0.1.1
 
 First published release: the Docker image and the in-app update check. Same features as 0.1.0 (never released).
