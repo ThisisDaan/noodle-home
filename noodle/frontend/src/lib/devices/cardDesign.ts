@@ -1,4 +1,5 @@
-import type { Entity } from '../api.ts';
+import type { Device, Entity } from '../api.ts';
+import { contactEntity, deviceKind, isHumidity, isPower, isTemperature, presenceEntity } from './kinds.ts';
 
 /** How a device's card is designed: a size (a grid of slots) and components placed in it. Stored in the dashboard
  * layout (backend main.py CARD_SIZES / CARD_COMPONENTS must say the same). A device without a design keeps its
@@ -20,7 +21,7 @@ export const COMPONENTS: Record<CardComponentType, { w: number; h: number; label
 	switch: { w: 1, h: 1, label: 'Switch', hint: 'Tap to turn on or off' },
 	value: { w: 1, h: 1, label: 'Value', hint: 'Shows a reading or text' },
 	dial: { w: 2, h: 1, label: 'Dial', hint: 'Plus and minus buttons for a number' },
-	slider: { w: 2, h: 1, label: 'Slider', hint: 'Drag to set a number' },
+	slider: { w: 1, h: 1, label: 'Slider', hint: 'Drag to set a number or a brightness' },
 	graph: { w: 2, h: 2, label: 'Graph', hint: 'The last hours of a reading' }
 };
 
@@ -56,4 +57,45 @@ export function compatible(component: CardComponentType, e: Entity): boolean {
 /** Tailwind classes that give a designed card its place in the tile grid (a grid item). */
 export function span(size: CardSize | undefined): string {
 	return size === 'wide' ? 'sm:col-span-2' : size === 'large' ? 'sm:col-span-2 sm:row-span-2' : '';
+}
+
+/** What a device's card looks like when nobody designed it: the same slots and components, so the designer always
+ * opens on what is on the card now. (A remote's buttons have their own look that is not made of components yet:
+ * null.) */
+export function defaultDesign(device: Device): CardDesign | null {
+	const slots: CardSlot[] = [];
+	const add = (component: CardComponentType, key: string | undefined) => {
+		if (key) slots.push({ at: slots.length ? slots[slots.length - 1].at + COMPONENTS[slots[slots.length - 1].component].w : 0, component, key });
+	};
+	switch (deviceKind(device)) {
+		case 'light': {
+			const light = device.entities.find((e) => e.kind === 'light');
+			add('switch', light?.key);
+			if (light && light.brightness !== null && light.brightness !== undefined) add('slider', light.key);
+			break;
+		}
+		case 'switch':
+			add('switch', device.entities.find((e) => e.kind === 'switch' || e.kind === 'fan')?.key);
+			add('value', device.entities.find(isPower)?.key);
+			break;
+		case 'thermostat':
+			add('dial', device.entities.find((e) => e.kind === 'climate')?.key);
+			break;
+		case 'climate':
+			add('value', device.entities.find(isTemperature)?.key);
+			add('value', device.entities.find(isHumidity)?.key);
+			break;
+		case 'motion':
+			add('value', presenceEntity(device)?.key);
+			break;
+		case 'contact':
+			add('value', contactEntity(device)?.key);
+			break;
+		case 'generic':
+			for (const e of device.entities.filter((e) => e.kind !== 'button').slice(0, 2)) add('value', e.key);
+			break;
+		default:
+			break;
+	}
+	return slots.length ? { size: 'small', slots } : null;
 }

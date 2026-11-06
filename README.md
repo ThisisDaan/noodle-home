@@ -76,10 +76,10 @@ large), tap a slot and choose a component and which field it uses:
 | Switch | 1 | something that can be on or off |
 | Value | 1 | any reading or text |
 | Dial (− and +) | 2 | a number, or a thermostat's target |
-| Slider | 2 | a number, or a light's brightness |
+| Slider | 1 | a number, or a light's brightness |
 | Graph | 2 x 2 | the last hours of a number |
 
-A device without a design keeps the look it has. The designs are kept in `dashboard.yaml` under `cards`.
+A device that nobody designed shows its own look, and the designer opens on exactly that look, written in the same slots and components, so you always start from what you see. The designs are kept in `dashboard.yaml` under `cards`.
 
 ## Other config files
 

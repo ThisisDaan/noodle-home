@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import { cardDesigner } from './designer.svelte';
-	import { COMPONENTS, SIZES, cells, compatible, fits, slotCount, type CardComponentType, type CardDesign, type CardSize } from './devices/cardDesign.ts';
+	import { COMPONENTS, SIZES, cells, compatible, defaultDesign, fits, slotCount, type CardComponentType, type CardDesign, type CardSize } from './devices/cardDesign.ts';
 	import { layout } from './layout.svelte';
 	import { live } from './live.svelte';
 
@@ -18,8 +18,9 @@
 
 	$effect(() => {
 		if (device && !dialog.open) {
-			const saved = layout.cards[device.id];
-			draft = saved ? { size: saved.size, slots: saved.slots.map((s) => ({ ...s })) } : { size: 'small', slots: [] };
+			// Open on what the card looks like now: the saved design, else the device's own look written as a design.
+			const start = layout.cards[device.id] ?? defaultDesign(device);
+			draft = start ? { size: start.size, slots: start.slots.map((s) => ({ ...s })) } : { size: 'small', slots: [] };
 			pick = null;
 			note = '';
 			dialog.showModal();
@@ -107,6 +108,11 @@
 					</div>
 				</div>
 				{#if note}<p class="text-xs opacity-70" role="status">{note}</p>{/if}
+				{#if !layout.cards[device.id] && draft.slots.length}
+					<p class="text-xs opacity-70">This is how the card looks now. Change anything and save to make it your own.</p>
+				{:else if !layout.cards[device.id]}
+					<p class="text-xs opacity-70">This device has its own look (buttons) that is not made of components yet. Anything you add here replaces it.</p>
+				{/if}
 
 				<div class="bg-base-200 rounded-box p-3">
 					<div class="mx-auto grid max-w-md gap-2" style="grid-template-columns: repeat({size.cols}, minmax(0, 1fr)); grid-auto-rows: 3.25rem;" aria-label="Card slots">

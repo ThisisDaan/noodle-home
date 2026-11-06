@@ -439,7 +439,7 @@ DEVICE_GROUPS = {"room", "type", "source", "none"}
 # How a device's card is designed (see the frontend CardDesigner): a size with a grid of slots, and the components
 # placed in it. Small is 2 slots wide and 1 high, wide is 4x1, large is 4x3. A component fills w x h slots.
 CARD_SIZES = {"small": (2, 1), "wide": (4, 1), "large": (4, 3)}
-CARD_COMPONENTS = {"switch": (1, 1), "value": (1, 1), "dial": (2, 1), "slider": (2, 1), "graph": (2, 2)}
+CARD_COMPONENTS = {"switch": (1, 1), "value": (1, 1), "dial": (2, 1), "slider": (1, 1), "graph": (2, 2)}
 DEVICE_SORTS = {"name", "recent"}
 
 
