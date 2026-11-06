@@ -27,11 +27,11 @@ of nodes that have more than one):
   (action.device also has a "message" input: msg.payload {brightness} / {on} / {toggle} is applied to the device,
    and for other kinds {color_temp} (kelvin), {color: {h, s}}, {position}, {action}, {mode}, {value}; see capabilities.py)
   action.device     "open" / "close" / "stop" for covers and "lock" / "unlock" for locks are inputs too
-  action.delay      wait N seconds
+  action.delay      wait N seconds (old flows; use action.timer, which survives a restart)
   action.timer     countdown with two inputs: "start" and "stop"; continues when it runs out
                     data: minutes, restart (true: a new start begins again; false: keep the running one)
   action.log        write a line to the flow log
-  (action.notify and action.speak are added by plugins, see plugins/notifications.py and plugins/speak.py;
+  (action.notify and action.speak are added by plugins, see plugins/notifications/ and plugins/speak/;
    integrations can add more nodes with Plugin.nodes())
   action.var        set a variable               data: name, value
   cond.var          variable equals / differs    data: name, op ("eq"|"neq"), value

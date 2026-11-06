@@ -4,7 +4,7 @@ import json
 import pytest
 
 from noodle import capabilities
-from noodle.adapters.zigbee import ZigbeeAdapter
+from noodle.plugins.zigbee.adapter import ZigbeeAdapter
 from noodle.hub import Device, Entity, Hub
 from noodle.store import Store
 

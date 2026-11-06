@@ -605,24 +605,24 @@
 		<!-- "+" next to an output: choose what comes next; it is created and connected for you. -->
 		<div class="fixed inset-0 z-[60] flex items-end justify-center md:items-center">
 			<button class="absolute inset-0 bg-black/30" aria-label="Close" onclick={() => (picking.from = null)}></button>
-			<aside class="bg-base-100 border-base-content/10 rounded-box relative flex max-h-[75dvh] w-full max-w-md flex-col gap-1 overflow-y-auto border p-3 shadow-2xl max-md:mx-2 max-md:mb-2">
-				<div class="flex items-center justify-between px-1">
+			<aside class="bg-base-100 border-base-content/10 rounded-box relative flex max-h-[75dvh] w-full max-w-md flex-col gap-1 overflow-hidden border p-3 shadow-2xl max-md:mx-2 max-md:mb-2">
+				<div class="flex shrink-0 items-center justify-between px-1">
 					<h3 class="font-bold">What happens next?</h3>
 					<button class="btn btn-ghost btn-sm btn-circle" aria-label="Close" onclick={() => (picking.from = null)}><Icon name="close" class="size-5" /></button>
 				</div>
-				{@render palette()}
+				<div class="flex min-h-0 flex-col gap-1 overflow-y-auto">{@render palette()}</div>
 			</aside>
 		</div>
 	{/if}
 	{#if addOpen}
 		<div class="fixed inset-0 z-[60] md:hidden">
 			<button class="absolute inset-0 bg-black/20" aria-label="Close" onclick={() => (addOpen = false)}></button>
-			<aside class="bg-base-100 border-base-content/10 rounded-box absolute inset-x-2 bottom-2 flex max-h-[65dvh] flex-col gap-1 overflow-y-auto border p-3 shadow-2xl">
-				<div class="flex items-center justify-between px-1">
+			<aside class="bg-base-100 border-base-content/10 rounded-box absolute inset-x-2 bottom-2 flex max-h-[65dvh] flex-col gap-1 overflow-hidden border p-3 shadow-2xl">
+				<div class="flex shrink-0 items-center justify-between px-1">
 					<h3 class="font-bold">Nodes</h3>
 					<button class="btn btn-ghost btn-sm btn-circle" aria-label="Close" onclick={() => (addOpen = false)}><Icon name="close" class="size-5" /></button>
 				</div>
-				{@render palette()}
+				<div class="flex min-h-0 flex-col gap-1 overflow-y-auto">{@render palette()}</div>
 			</aside>
 		</div>
 	{/if}

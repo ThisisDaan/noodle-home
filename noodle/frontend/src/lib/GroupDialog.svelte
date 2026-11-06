@@ -54,13 +54,14 @@
 </script>
 
 <dialog class="modal modal-bottom sm:modal-middle" bind:this={dialog} onclose={() => groupEditor.close()}>
-	<div class="modal-box flex flex-col gap-4">
+	<div class="modal-box flex flex-col gap-4 overflow-hidden">
 		{#if g}
-			<div class="flex items-center gap-3">
+			<div class="flex shrink-0 items-center gap-3">
 				<span class="icon-bubble"><Icon name="bulb" /></span>
 				<h2 class="grow text-lg font-bold">{g.id ? 'Edit light group' : 'New light group'}</h2>
 				<form method="dialog"><button class="btn btn-ghost btn-sm btn-circle" aria-label="Close"><Icon name="close" /></button></form>
 			</div>
+			<div class="flex min-h-0 flex-col gap-4 overflow-y-auto">
 			<p class="text-sm opacity-70">
 				The lamps you tick act as one light: one switch and one brightness slider on the dashboard, and one device in
 				your flows. The lamps also still work on their own.
@@ -93,6 +94,7 @@
 					</button>
 				</div>
 			</form>
+			</div>
 		{/if}
 	</div>
 	<form method="dialog" class="modal-backdrop"><button>close</button></form>

@@ -22,7 +22,7 @@ export type Entity = {
 
 export type Device = {
 	id: string;
-	source: 'zigbee' | 'matter' | 'ble' | 'hue' | 'lifx' | 'group';
+	source: 'zigbee' | 'matter' | 'ble' | 'hue' | 'lifx' | 'group' | 'combined';
 	name: string;
 	model: string | null;
 	manufacturer: string | null;

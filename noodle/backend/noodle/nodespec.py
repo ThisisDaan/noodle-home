@@ -77,7 +77,7 @@ CORE: dict[str, dict] = {
     "action.repeat": {"label": "Repeat", "category": "action",
                       "help": "Inputs start/stop: sends the message every N seconds until stopped.",
                       "fields": {"seconds": ("num", "Seconds between messages"), "max_seconds": ("num", "Stop after")}},
-    "action.delay": {"label": "Wait", "category": "action", "help": "Waits, then continues.",
+    "action.delay": {"label": "Wait", "category": "action", "help": "Waits, then continues. Old flows only: it is lost on a restart, use Timer.",
                      "fields": {"seconds": ("num", "Seconds")}},
     "action.timer": {"label": "Timer", "category": "action",
                      "help": "Countdown with inputs 'start' and 'stop'; continues when it runs out.",

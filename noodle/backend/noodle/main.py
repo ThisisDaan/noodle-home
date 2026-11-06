@@ -36,6 +36,9 @@ zigbee, matter, hue, phone, groups = (ADAPTERS[s] for s in ("zigbee", "matter", 
 for adapter in ADAPTERS.values():
     hub.register(adapter)
 flows = FlowEngine(hub, store)
+for adapter in ADAPTERS.values():
+    if hasattr(adapter, "attach_flows"):  # adapters that write flows
+        adapter.attach_flows(flows)
 discovery = Discovery(hub)
 adopt_hue_buttons(flows)
 retire_thermostat(flows)
@@ -71,6 +74,7 @@ async def _apply_settings(changed: set[str]) -> None:
             continue
         running = plugin.source in tasks and not tasks[plugin.source].done()
         want = not plugin.gated or plugin.id in added
+        # `forget` doubles as the list of keys that belong to this plugin besides its fields
         touched = any(k in changed for k in [*(f.key for f in plugin.fields), *plugin.forget])
         if want and (touched or (plugin.gated and not running)):
             await restart_adapter(plugin.source)
@@ -659,8 +663,14 @@ async def system() -> dict:
         result = plugin.system_info(ADAPTERS.get(plugin.source))
         return await result if inspect.isawaitable(result) else result
 
-    infos = await asyncio.gather(*(info(p) for p in PLUGINS))
-    return {p.id: i for p, i in zip(PLUGINS, infos) if i is not None}
+    infos = await asyncio.gather(*(info(p) for p in PLUGINS), return_exceptions=True)
+    out = {}
+    for p, i in zip(PLUGINS, infos):
+        if isinstance(i, Exception):  # one integration failing must not hide the others
+            log.warning("%s: system info failed: %s", p.id, i)
+        elif i is not None:
+            out[p.id] = i
+    return out
 
 
 @app.post("/api/update/check", dependencies=[Depends(require_login)])
@@ -694,6 +704,8 @@ def webhook(token: str, name: str) -> dict:
 
 @app.get("/api/notify", dependencies=[Depends(require_login)])
 def notify_info() -> dict:
+    # Behind login. Unlike `Field.secret` values, the ntfy topic is returned on purpose: the page shows it
+    # so the user can subscribe their phone to it.
     return {"configured": notify.configured(), "server": config.NTFY_URL, "topic": config.NTFY_TOPIC,
             "app_connections": notify.app_clients()}
 
@@ -757,7 +769,7 @@ async def save_integration(integration_id: str, body: SettingsBody) -> dict:
         raise HTTPException(400, f"One of the values is not valid: {err}")
     if "home_name" in values:
         hub.broadcast({"type": "home", "name": config.HOME_NAME})  # the sidebar and page title update
-    if item.adapter:
+    if item.adapter and (not item.gated or item.id in integrations.added_ids()):  # one that is not added is not running
         await restart_adapter(item.adapter)
         await asyncio.sleep(2.5)  # give it a moment to connect, so the answer shows the result
     return _describe(item)

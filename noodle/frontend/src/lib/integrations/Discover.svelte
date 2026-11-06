@@ -172,6 +172,7 @@
 	.radar {
 		position: relative;
 		flex: none;
+		margin: 0.6rem; /* room for the rings, which grow a little past the circle */
 		width: 7rem;
 		height: 7rem;
 		border-radius: 50%;

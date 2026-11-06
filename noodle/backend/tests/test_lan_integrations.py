@@ -10,7 +10,15 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from noodle import config, main  # noqa: E402
-from noodle.adapters import dirigera, homeassistant, kasa, mqttdisc, nanoleaf, shelly, sonos, wled  # noqa: E402
+from noodle.plugins.dirigera import adapter as dirigera  # noqa: E402
+from noodle.plugins.homeassistant import adapter as homeassistant  # noqa: E402
+from noodle.plugins.kasa import adapter as kasa  # noqa: E402
+from noodle.plugins.mqtt import adapter as mqttdisc  # noqa: E402
+from noodle.plugins.nanoleaf import adapter as nanoleaf  # noqa: E402
+from noodle.plugins.shelly import adapter as shelly  # noqa: E402
+from noodle.plugins.sonos import adapter as sonos  # noqa: E402
+from noodle.plugins.base import PressButton  # noqa: E402
+from noodle.plugins.wled import adapter as wled  # noqa: E402
 
 
 class FakeHub:
@@ -109,7 +117,7 @@ def test_nanoleaf_pairing_needs_the_button(monkeypatch):
     async def go():
         adapter = nanoleaf.NanoleafAdapter(FakeHub())
         adapter.http = mock(lambda request: httpx.Response(403))
-        with pytest.raises(ValueError, match="power button"):
+        with pytest.raises(PressButton, match="power button"):
             await adapter.add_host("192.168.1.60")
 
     asyncio.run(go())

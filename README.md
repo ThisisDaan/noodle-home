@@ -39,7 +39,7 @@ After the first login a short setup wizard asks for your home's name and locatio
 
 ## Integrations
 
-Zigbee (through Zigbee2MQTT), Matter and Thread (python-matter-server and an OpenThread border router), Philips Hue (found and paired from the app), LIFX, Shelly, WLED, TP-Link Kasa, Nanoleaf and Sonos (found on the network or added by IP address, no cloud), IKEA DIRIGERA (paired with its button), Tasmota, ESPHome and other MQTT devices (Home Assistant discovery format), Home Assistant (bring in what it controls), Bluetooth temperature and humidity sensors, ntfy and in-app phone notifications, and Google speakers (speak). Heating is a flow: the Thermostat node watches a room sensor and switches a heater plug. Writing a new one is a single module, see "Writing an integration" below.
+Zigbee (through Zigbee2MQTT), Matter and Thread (python-matter-server and an OpenThread border router), Philips Hue (found and paired from the app), LIFX, Shelly, WLED, TP-Link Kasa, Philips WiZ, Yeelight, Govee, Roku, Yamaha MusicCast, Nanoleaf and Sonos (found on the network or added by IP address, no cloud), IKEA DIRIGERA (paired with its button), Pi-hole (ad blocking switch and stats), UniFi presence (who is on your Wi-Fi), Tasmota, ESPHome and other MQTT devices (Home Assistant discovery format), Home Assistant (bring in what it controls), Bluetooth temperature and humidity sensors, ntfy and in-app phone notifications, and Google speakers (speak). Heating is a flow: the Thermostat node watches a room sensor and switches a heater plug. Writing a new one is a single module, see "Writing an integration" below.
 
 ## Flows as files
 
@@ -53,6 +53,10 @@ noodle schema      # JSON Schema of the format, with the nodes you have installe
 ```
 
 In Docker: `docker compose exec noodle python -m noodle validate`. `GET /api/flow/schema` serves the same schema; device ids for `device_id` come from `GET /api/devices`. Format and an example: `noodle/backend/noodle/flowfiles.py`. Letting an AI write flows is described in [docs/AI.md](docs/AI.md).
+
+## Combined devices
+
+Devices page, "Combine devices": make one device out of several. A **Heater** (temperature sensor + smart plug, with a target, a maximum heating time and a switch-off when the sensor goes quiet), a **Timer switch** (a plug that switches itself off after N minutes) or a **Threshold sensor** (a reading turned into on/off, with some room before it switches back). Each is a file in `<data>/config/combined/` (edit it by hand and the hub picks it up within a few seconds), and where something has to be done a normal flow called `combined-<id>` does it: open it in Automations to read it. The heater flow only runs while the device is set to heat. Deleting a combined device removes its file and flow, never the devices it is made from. Templates live in `noodle/backend/noodle/plugins/combined/templates.py`.
 
 ## Other config files
 
@@ -72,11 +76,22 @@ Environment variables are `NOODLE_DATA`, `NOODLE_CONFIG`, `NOODLE_PORT`, `NOODLE
 
 ## Writing an integration
 
-Each integration is one module in `noodle/backend/noodle/plugins/` with a module-level `PLUGIN`. Nothing else has to change: the Integrations page, start-up, settings files, flow editor and System page are built from the plugins.
+Each integration is one folder in `noodle/backend/noodle/plugins/`, and everything about it lives there:
+
+```
+plugins/mything/
+    __init__.py     # from .plugin import PLUGIN
+    plugin.py       # what it is: name, help text, settings fields, status, flow nodes, search
+    adapter.py      # how it works: talks to the device or service
+```
+
+Outside the folder only its setting keys in `config.SETTINGS` have to be added (and a panel in `panels.ts` if it has a custom one): the Integrations page, start-up, settings files, flow editor and System page are built from the plugins. For a device with a local HTTP API, the adapter extends `LanAdapter` and the plugin extends `LanPlugin` (see `plugins/wled/`, about 70 lines in total).
+
+`plugin.py`:
 
 ```python
-from ..adapters.mything import MyThingAdapter      # talks to the service, has .source and async run()
-from .base import Field, Node, NodeField, Plugin
+from .adapter import MyThingAdapter                # talks to the service, has .source and async run()
+from ..base import Field, Node, NodeField, Plugin
 
 
 async def run_beep(n):                              # what the flow node does
@@ -106,6 +121,8 @@ class MyThingPlugin(Plugin):
 
 PLUGIN = MyThingPlugin()
 ```
+
+`support = "supported"` or `"untested"` sets the badge on the Integrations page; leave it as `untested` (the default) until someone has run it on real devices.
 
 Optional hooks: `preset()` (already set up counts as added), `routes()` (own API endpoints), `details()` and `panel` (extra panel on the page, a component listed in `frontend/src/lib/integrations/panels.ts`), `system_info()` (shown on the System page), `forget` and `on_remove()` (cleanup when removed). Add the setting keys to `SETTINGS` in `config.py` with the plugin id as section. The tests in `noodle/backend/tests` check that the pieces agree (`pip install -r requirements-dev.txt`, then `pytest`).
 

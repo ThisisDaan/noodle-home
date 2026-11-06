@@ -16,7 +16,7 @@ export type NodeDef = {
 	/** Nodes an integration adds (see /api/flow/nodes): the form of their properties and their one-line summary. */
 	fields?: NodeField[];
 	summary?: string;
-	/** False while the integration that adds the node is not added; it stays in DEFS so old flows still show it. */
+	/** False while the integration that adds the node is not added, or for a node kept only for old flows (Wait); it stays in DEFS so old flows still show it. */
 	available?: boolean;
 };
 export type NodeField = {
@@ -65,7 +65,7 @@ export const CATALOG: NodeDef[] = [
 	{ type: 'action.flow', label: 'Run another flow', category: 'action', defaults: { flow_id: '' } },
 	{ type: 'action.cycle', label: 'Cycle', category: 'action', defaults: { inputs: ['next', 'back', 'loop'], steps: [{ brightness: 25 }, { brightness: 50 }, { brightness: 75 }, { brightness: 100 }] } },
 	{ type: 'action.repeat', label: 'Repeat', category: 'action', defaults: { seconds: 0.5, max_seconds: 30 } },
-	{ type: 'action.delay', label: 'Wait', category: 'action', defaults: { seconds: 5 } },
+	{ type: 'action.delay', label: 'Wait', category: 'action', defaults: { seconds: 5 }, available: false }, // old flows only: use Timer
 	{ type: 'action.timer', label: 'Timer', category: 'action', defaults: { minutes: 5, restart: true } },
 	{ type: 'action.log', label: 'Log message', category: 'action', defaults: { message: 'Something happened' } },
 	{ type: 'action.var', label: 'Set variable', category: 'action', defaults: { name: 'status', value: '' } }

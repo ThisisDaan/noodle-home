@@ -216,7 +216,7 @@ def test_sun_times_follow_the_location(files, monkeypatch):
 
 
 def test_hub_settings_report_location_state():
-    from noodle.plugins.hub_settings import PLUGIN
+    from noodle.plugins.system import PLUGIN
     info = PLUGIN.details(None)
     assert set(info) == {"location_set", "timezone_now", "time_now"}
 
@@ -310,7 +310,7 @@ def test_a_fresh_database_has_no_legacy_tables_but_an_old_one_is_still_read(tmp_
 
 
 def test_forwarded_hue_buttons_come_from_a_file(tmp_path, monkeypatch):
-    from noodle.adapters import hue
+    from noodle.plugins.hue import adapter as hue
 
     monkeypatch.setattr(config, "CONFIG_DIR", tmp_path)
     assert hue.legacy_switches() == {} and hue.legacy_buttons() == {}
@@ -319,3 +319,11 @@ def test_forwarded_hue_buttons_come_from_a_file(tmp_path, monkeypatch):
     assert hue.legacy_switches()["hue:tap"][0] == "Tap"
     (tmp_path / "hue-hooks.yaml").write_text("hue:tap: [broken" + chr(10))
     assert hue.legacy_buttons() == {}  # a broken file does not break the hub
+
+
+def test_saving_one_setting_keeps_the_others_in_its_section():
+    config.save({"latitude": "51.5", "longitude": "-0.12", "timezone": "Europe/London"})
+    config.save({"home_name": "Home"})
+    config.load()
+    assert config.LATITUDE == 51.5 and config.LONGITUDE == -0.12 and config.LOCATION_SET is True
+    assert config.TIMEZONE == "Europe/London" and config.HOME_NAME == "Home"

@@ -2,7 +2,7 @@
 	import { api } from '../api.ts';
 	import type { Integration, PanelProps } from './types.ts';
 
-	let { item, onchange }: PanelProps = $props();
+	let { item, onchange, adding = false }: PanelProps = $props();
 	let busy = $state(false);
 	let error = $state('');
 
@@ -21,7 +21,7 @@
 		change(() => api<Integration>(`/ble/sensors/${encodeURIComponent(address)}`, { method: 'DELETE' }));
 </script>
 
-{#if item.sensors?.length}
+{#if !adding && item.sensors?.length}
 	<div class="flex flex-col gap-1">
 		<h3 class="text-xs font-semibold tracking-wide uppercase opacity-60">Your sensors</h3>
 		{#each item.sensors as sensor (sensor.address)}

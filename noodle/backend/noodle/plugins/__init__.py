@@ -1,4 +1,4 @@
-"""Integration plugins, found by looking at the modules in this package."""
+"""Integration plugins. Each integration is one folder here (plugin.py, adapter.py, __init__.py exposing PLUGIN)."""
 
 from __future__ import annotations
 
@@ -25,10 +25,10 @@ def node_types() -> dict[str, tuple[Plugin, Node]]:
 
 @functools.cache
 def discover() -> list[Plugin]:
-    """Every module here with a `PLUGIN`, in page order."""
+    """Every folder here whose package exposes a `PLUGIN`, in page order."""
     found = []
     for module in pkgutil.iter_modules(__path__):
-        if module.name == "base":
+        if not module.ispkg:
             continue
         plugin = getattr(importlib.import_module(f"{__name__}.{module.name}"), "PLUGIN", None)
         if plugin is not None:

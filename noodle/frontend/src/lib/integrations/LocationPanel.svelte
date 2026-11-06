@@ -94,11 +94,12 @@
 </div>
 
 <dialog class="modal modal-bottom sm:modal-middle" bind:this={dialog} onclose={() => (unmount = setTimeout(() => (open = false), 400))}>
-	<div class="modal-box flex max-w-2xl flex-col gap-3">
-		<div class="flex items-center">
+	<div class="modal-box flex max-w-2xl flex-col gap-3 overflow-hidden">
+		<div class="flex shrink-0 items-center">
 			<h3 class="grow text-lg font-bold">Where is your home?</h3>
 			<button type="button" class="btn btn-ghost btn-sm btn-circle" aria-label="Close" onclick={hide}><Icon name="close" class="size-5" /></button>
 		</div>
+		<div class="flex min-h-0 flex-col gap-3 overflow-y-auto">
 		<p class="text-sm opacity-70">Search for your address, click the map or drag the pin. The time zone follows from the place.</p>
 		{#if open}<LocationMap {latitude} {longitude} onpick={save} />{/if}
 		<div class="flex flex-wrap items-center gap-2">
@@ -109,6 +110,7 @@
 			<button type="button" class="btn btn-primary btn-sm" onclick={hide}>Done</button>
 		</div>
 		{#if message}<div role="alert" class="alert alert-soft text-sm {message.ok ? 'alert-success' : 'alert-error'}">{message.text}</div>{/if}
+		</div>
 	</div>
 	<form method="dialog" class="modal-backdrop"><button aria-label="Close">close</button></form>
 </dialog>

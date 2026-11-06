@@ -1,7 +1,7 @@
 import type { Device, Entity } from '../api.ts';
 
 /** How a device is shown: the face it gets on its card and, for some, at the top of its sheet (DeviceFace.svelte). */
-export type DeviceKind = 'light' | 'switch' | 'button' | 'motion' | 'contact' | 'climate' | 'generic';
+export type DeviceKind = 'light' | 'switch' | 'button' | 'motion' | 'contact' | 'climate' | 'thermostat' | 'generic';
 
 export const isMotion = (e: Entity) => e.kind === 'binary_sensor' && (e.device_class === 'occupancy' || e.device_class === 'presence');
 /** What a presence-capable sensor shows: its "presence" entity (motion that holds for a few minutes) when it has
@@ -18,7 +18,8 @@ export const isPower = (e: Entity) => e.kind === 'sensor' && e.device_class === 
 export function deviceKind(d: Device): DeviceKind {
 	const has = (...kinds: Entity['kind'][]) => d.entities.some((e) => kinds.includes(e.kind));
 	if (has('light')) return 'light';
-	if (has('cover', 'lock', 'climate')) return 'generic';
+	if (has('climate')) return 'thermostat';
+	if (has('cover', 'lock')) return 'generic';
 	if (has('switch', 'fan')) return 'switch';
 	if (has('button')) return 'button';
 	if (d.entities.some(isMotion)) return 'motion';

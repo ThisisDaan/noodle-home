@@ -1,13 +1,15 @@
 <script lang="ts">
 	import DeviceCard from '#lib/DeviceCard.svelte';
+	import AddDevice from '#lib/integrations/AddDevice.svelte';
 	import Icon from '#lib/Icon.svelte';
 	import type { Device } from '#lib/api.ts';
+	import { combineEditor } from '#lib/combine.svelte.ts';
 	import { groupEditor } from '#lib/groups.svelte.ts';
 	import { layout } from '#lib/layout.svelte.ts';
 	import { live } from '#lib/live.svelte.ts';
 
 	let query = $state('');
-	let source = $state<'all' | 'zigbee' | 'matter' | 'group'>('all');
+	let source = $state('all');
 	let room = $state('all');
 
 	const shown = $derived(
@@ -22,6 +24,16 @@
 	);
 
 	const view = $derived(layout.devicesView);
+
+	// The integrations that have devices here, for the filter (not a fixed list).
+	const sources = $derived([...new Set(live.list.map((d) => d.source))].sort());
+	const sourceLabel = (s: string) => (s === 'group' ? 'Light groups' : s[0].toUpperCase() + s.slice(1));
+	const filtered = $derived(query !== '' || room !== 'all' || source !== 'all');
+	const reset = () => {
+		query = '';
+		room = 'all';
+		source = 'all';
+	};
 
 	const TYPE_ORDER = ['Lights', 'Plugs and switches', 'Buttons and remotes', 'Sensors', 'Heating', 'Other'];
 	function typeOf(d: Device): string {
@@ -60,39 +72,61 @@
 	<DeviceCard device={d} />
 {/snippet}
 
-<div class="mb-5 flex flex-wrap items-center gap-3">
-	<h1 class="mr-auto text-3xl font-bold tracking-tight">
+<div class="mb-4 flex items-center gap-3">
+	<h1 class="mr-auto min-w-0 truncate text-3xl font-bold tracking-tight">
 		Devices <span class="text-base font-normal opacity-60">{shown.length}</span>
 	</h1>
-	<label class="input input-sm w-full sm:w-56">
+	<div class="flex shrink-0 items-center gap-2">
+		<button class="btn btn-sm btn-ghost" onclick={() => groupEditor.create()} aria-label="New light group">
+			<Icon name="bulb" class="size-4" /><span class="hidden sm:inline">New light group</span><span class="sm:hidden">Group</span>
+		</button>
+		<button class="btn btn-sm btn-ghost" onclick={() => combineEditor.create()} aria-label="Combine devices">
+			<Icon name="thermo" class="size-4" /><span class="hidden sm:inline">Combine devices</span><span class="sm:hidden">Combine</span>
+		</button>
+		<AddDevice />
+	</div>
+</div>
+
+<div class="mb-6 flex flex-wrap items-center gap-2">
+	<label class="input input-sm min-w-48 grow sm:max-w-sm">
 		<Icon name="search" class="size-4 opacity-60" />
-		<input type="search" placeholder="Search devices" bind:value={query} />
+		<input type="search" placeholder="Search devices" aria-label="Search devices" bind:value={query} />
 	</label>
 	<select class="select select-sm w-auto" bind:value={room} aria-label="Room">
 		<option value="all">All rooms</option>
 		{#each live.areas as a (a)}<option value={a}>{a}</option>{/each}
 		<option value="">No room</option>
 	</select>
-	<select class="select select-sm w-auto" value={view.group_by} aria-label="Group by"
-		onchange={(e) => layout.setDevicesView({ group_by: e.currentTarget.value as typeof view.group_by })}>
-		<option value="room">Group by room</option>
-		<option value="type">Group by type</option>
-		<option value="source">Group by integration</option>
-		<option value="none">No groups</option>
-	</select>
-	<select class="select select-sm w-auto" value={view.sort} aria-label="Sort"
-		onchange={(e) => layout.setDevicesView({ sort: e.currentTarget.value as typeof view.sort })}>
-		<option value="name">Sort by name</option>
-		<option value="recent">Recently seen first</option>
-	</select>
-	<button class="btn btn-sm btn-primary" onclick={() => groupEditor.create()}>
-		<Icon name="bulb" class="size-4" />New light group
-	</button>
-	<div class="join">
-		{#each ['all', 'zigbee', 'matter', 'group'] as s (s)}
-			<input class="join-item btn btn-sm capitalize" type="radio" name="source" aria-label={s} value={s} bind:group={source} />
-		{/each}
-	</div>
+	{#if sources.length > 1}
+		<select class="select select-sm w-auto" bind:value={source} aria-label="Integration">
+			<option value="all">All integrations</option>
+			{#each sources as s (s)}<option value={s}>{sourceLabel(s)}</option>{/each}
+		</select>
+	{/if}
+	{#if filtered}
+		<button class="btn btn-sm btn-ghost" onclick={reset}>Clear filters</button>
+	{/if}
+	<details class="dropdown dropdown-end ml-auto">
+		<summary class="btn btn-sm btn-ghost"><Icon name="sliders" class="size-4" />View</summary>
+		<div class="dropdown-content bg-base-100 border-base-content/10 rounded-box z-10 mt-1 flex w-56 flex-col gap-3 border p-3 shadow-lg">
+			<label class="flex flex-col gap-1 text-xs font-medium opacity-80">Group by
+				<select class="select select-sm w-full" value={view.group_by}
+					onchange={(e) => layout.setDevicesView({ group_by: e.currentTarget.value as typeof view.group_by })}>
+					<option value="room">Room</option>
+					<option value="type">Type</option>
+					<option value="source">Integration</option>
+					<option value="none">No groups</option>
+				</select>
+			</label>
+			<label class="flex flex-col gap-1 text-xs font-medium opacity-80">Sort by
+				<select class="select select-sm w-full" value={view.sort}
+					onchange={(e) => layout.setDevicesView({ sort: e.currentTarget.value as typeof view.sort })}>
+					<option value="name">Name</option>
+					<option value="recent">Recently seen first</option>
+				</select>
+			</label>
+		</div>
+	</details>
 </div>
 
 {#each groups as g (g.key)}

@@ -26,7 +26,7 @@ Rules
   "yes"/"no" (on/off entities "on"/"off"); everything else "out".
 - Always write `enabled: false`. A person switches a flow on after reading it.
 - Keep it simple and add a short comment above each step saying what it does. Prefer an action.timer or
-  cond.for over polling, and add a safety net (for example a timer that switches a heater off) when the
+  cond.for over polling (use action.timer for any wait, never action.delay: it is lost on a restart), and add a safety net (for example a timer that switches a heater off) when the
   request is about something that can run unattended.
 """
 
