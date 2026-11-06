@@ -54,9 +54,30 @@ noodle schema      # JSON Schema of the format, with the nodes you have installe
 
 In Docker: `docker compose exec noodle python -m noodle validate`. `GET /api/flow/schema` serves the same schema; device ids for `device_id` come from `GET /api/devices`. Format and an example: `noodle/backend/noodle/flowfiles.py`. Letting an AI write flows is described in [docs/AI.md](docs/AI.md).
 
-## Combined devices
+## Cards: a flow with its own controls on the dashboard
 
-Devices page, "Combine devices": make one device out of several. A **Heater** (temperature sensor + smart plug, with a target, a maximum heating time and a switch-off when the sensor goes quiet), a **Timer switch** (a plug that switches itself off after N minutes) or a **Threshold sensor** (a reading turned into on/off, with some room before it switches back). Each is a file in `<data>/config/combined/` (edit it by hand and the hub picks it up within a few seconds), and where something has to be done a normal flow called `combined-<id>` does it: open it in Automations to read it. The heater flow only runs while the device is set to heat. Deleting a combined device removes its file and flow, never the devices it is made from. Templates live in `noodle/backend/noodle/plugins/combined/templates.py`.
+A flow can put a card on the dashboard, so one automation becomes something you can use: a heater with a switch and a
+target dial, a timer with a start button, a scene picker. The flow does the work; the card is only its face. Add a
+`card:` section to the flow file (see `noodle/backend/noodle/examples/flows/heater-card.yaml`):
+
+```yaml
+card:
+  title: Heater
+  controls:
+    - {id: heat, type: switch, label: Heating}
+    - {id: target, type: dial, label: Target, min: 5, max: 30, step: 0.5, unit: °C, default: 20}
+  show:
+    - {type: value, label: Room, device_id: 'zigbee:0x...', key: temperature}
+    - {type: status, label: State, variable: heater-card.status}
+```
+
+- **Controls**: `switch`, `dial`, `slider`, `button`, `select`. Using one starts the flow's *Card control* node
+  (`trigger.control`, `control: heat`; a switch has `on` and `off` outputs). Its value is kept in the variable
+  `<flow id>.<control id>`, so a *Check variable* node can test it, and any number setting can use it as
+  `{control.target}` (a thermostat's target, a timer's minutes).
+- **Show**: a live `value` of a device reading, a `status` line (the variable a *Set variable* step writes) or a `graph`.
+- The card appears on the dashboard while the flow exists; its controls only work while the flow is switched on.
+  New flows from files or an AI start switched off, like always. The visual editor keeps the card when you save the flow.
 
 ## Other config files
 

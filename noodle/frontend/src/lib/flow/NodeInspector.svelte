@@ -3,6 +3,9 @@
 	import { live } from '../live.svelte.ts';
 	import { accepts, DAY_NAMES, changeOptions, CYCLE_INPUTS, defaultChanges, pressOptions, DEFS, DEVICE_ACTIONS, actionsFor, deviceActionLabel, isNumeric } from './catalog.ts';
 
+	/** A number, or "{control.id}" to use a control of the flow's card. */
+	const numberOrControl = (v: string) => (/^\{control\.[a-z][a-z0-9_]*\}$/.test(v.trim()) ? v.trim() : Number(v));
+
 	let { type, data, onchange, ondelete, onduplicate, onrun }: {
 		type: string;
 		data: Record<string, any>;
@@ -171,16 +174,24 @@
 	{:else if type === 'trigger.thermostat'}
 		<div class="flex flex-wrap gap-2">
 			<label class="floating-label grow"><span>Target °C</span>
-				<input type="number" step="0.5" class="input input-sm w-full" value={data.target} onchange={(e) => set({ target: Number(e.currentTarget.value) })} /></label>
+				<input inputmode="decimal" class="input input-sm w-full" value={data.target} onchange={(e) => set({ target: numberOrControl(e.currentTarget.value) })} /></label>
 			<label class="floating-label grow"><span>Margin °C</span>
-				<input type="number" step="0.1" min="0" class="input input-sm w-full" value={data.margin} onchange={(e) => set({ margin: Number(e.currentTarget.value) })} /></label>
+				<input inputmode="decimal" class="input input-sm w-full" value={data.margin} onchange={(e) => set({ margin: numberOrControl(e.currentTarget.value) })} /></label>
 		</div>
+		<p class="text-xs opacity-60">A number, or {'{control.id}'} to use a control of this flow's card (for example {'{control.target}'}).</p>
 		<ul class="list-disc pl-4 text-xs opacity-70">
 			<li><b>Too cold</b> fires once when it drops to {Number(data.target) - Number(data.margin)} °C or less.</li>
 			<li><b>Warm enough</b> fires once when it reaches {Number(data.target) + Number(data.margin)} °C or more.</li>
 			<li>In between nothing happens, so a heater does not keep switching on and off.</li>
 		</ul>
 		<p class="text-xs opacity-60">Use {'{temperature}'} in a notification to show the reading.</p>
+	{:else if type === 'trigger.control'}
+		<label class="floating-label"><span>Control id</span>
+			<input class="input input-sm w-full" value={data.control} placeholder="e.g. heat" onchange={(e) => set({ control: e.currentTarget.value.trim() })} /></label>
+		<ul class="list-disc pl-4 text-xs opacity-70">
+			<li>The id of a control in this flow's <code>card:</code> (edit the flow file to add one).</li>
+			<li>A switch has <b>Switched on</b> and <b>Switched off</b>; every control also has <b>Used</b>, carrying its value.</li>
+		</ul>
 	{:else if type === 'trigger.time'}
 		<label class="floating-label"><span>Time</span>
 			<input type="time" class="input input-sm w-full" value={data.at} onchange={(e) => set({ at: e.currentTarget.value })} /></label>
@@ -296,8 +307,8 @@
 		<label class="floating-label"><span>Seconds</span>
 			<input type="number" min="0" class="input input-sm w-full" value={data.seconds} onchange={(e) => set({ seconds: Number(e.currentTarget.value) })} /></label>
 	{:else if type === 'action.timer'}
-		<label class="floating-label"><span>Minutes</span>
-			<input type="number" min="0" step="0.5" class="input input-sm w-full" value={data.minutes} onchange={(e) => set({ minutes: Number(e.currentTarget.value) })} /></label>
+		<label class="floating-label"><span>Minutes (or {'{control.id}'})</span>
+			<input inputmode="decimal" class="input input-sm w-full" value={data.minutes} onchange={(e) => set({ minutes: numberOrControl(e.currentTarget.value) })} /></label>
 		<label class="flex items-center gap-2">
 			<input type="checkbox" class="checkbox checkbox-xs" checked={data.restart !== false} onchange={(e) => set({ restart: e.currentTarget.checked })} />
 			Start again while counting = begin from {data.minutes} min again

@@ -12,6 +12,10 @@ of nodes that have more than one):
                     (at or below target - margin) / "warm" (at or above target + margin), once per crossing;
                     input "check": a message arriving there re-reads the temperature and takes the matching output now
                     (nothing happens between the limits)
+  trigger.control   a control of the flow's card was used   data: control (its id); outputs "out" (msg value),
+                    and "on" / "off" when the control is a switch
+  trigger.control   a control of the flow's card was used   data: control (its id); outputs "out" (msg value),
+                    and "on" / "off" when the control is a switch
   trigger.time      every day at a time          data: at ("HH:MM")
   trigger.interval  every N seconds              data: seconds
   cond.state        entity is on/off             outputs "on" / "off"; with op =/>/< (numbers): "yes" / "no"
@@ -53,6 +57,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 import uuid
 from collections import deque
@@ -147,6 +152,10 @@ class NodeRun:
     async def follow(self, handle: str = "out") -> None:
         """Send the message on to whatever is connected to this output."""
         await self._engine._follow(self._flow, self._node, self.msg, handle, self._steps)
+
+
+# A node setting can hold "{control.<id>}" instead of a number: the value of one of the flow's card controls.
+CONTROL_REF = re.compile(r"^\{control\.([a-z][a-z0-9_]*)\}$")
 
 
 class FlowEngine:
@@ -437,6 +446,8 @@ class FlowEngine:
         if name is not None:
             flow["name"] = name
         if graph is not None:
+            if "card" not in graph and flow["graph"].get("card"):
+                graph = {**graph, "card": flow["graph"]["card"]}  # the editor does not edit the card: keep it
             self._migrate_device_inputs(graph)  # an editor tab opened before an upgrade still sends old nodes
             self._migrate_state_outputs(graph)
             self._migrate_event_outputs(graph)
@@ -522,7 +533,7 @@ class FlowEngine:
     def _thermostat(self, flow: dict, node: dict, reading: Any) -> None:
         d = node.get("data", {})
         try:
-            temp, target, margin = float(reading), float(d.get("target", 20)), float(d.get("margin", 0.5))
+            temp, target, margin = float(reading), self.number(flow, d, "target", 20), self.number(flow, d, "margin", 0.5)
         except (TypeError, ValueError):
             return
         # Between the two limits nothing happens, so a heater does not flick on and off.
@@ -596,7 +607,7 @@ class FlowEngine:
         d = node.get("data", {})
         if (flow_id, node["id"]) in self.timers and d.get("restart") is False:
             return  # keep the countdown that is already running
-        t = {"deadline": time.time() + float(d.get("minutes") or 0) * 60, "msg": msg}
+        t = {"deadline": time.time() + self.number(flow_id, d, "minutes", 0) * 60, "msg": msg}
         self.timers[(flow_id, node["id"])] = t
         self.store.db.execute("INSERT OR REPLACE INTO flow_timers VALUES (?, ?, ?, ?, ?)",
                               (flow_id, node["id"], node["id"], t["deadline"], json.dumps(msg, default=str)))
@@ -670,7 +681,7 @@ class FlowEngine:
             # Fed by another step: judge the current temperature now, whatever side it was on before.
             _, entity = self._entity(d)
             try:
-                temp, target, margin = float(entity.state), float(d.get("target", 20)), float(d.get("margin", 0.5))
+                temp, target, margin = float(entity.state), self.number(flow, d, "target", 20), self.number(flow, d, "margin", 0.5)
             except (AttributeError, TypeError, ValueError):
                 return
             zone = "cold" if temp <= target - margin else "warm" if temp >= target + margin else None
@@ -931,7 +942,86 @@ class FlowEngine:
             await self._run(flow, n, {"trigger": "manual"})
         return len(nodes)
 
+    # --- cards: controls and displays that a flow puts on the dashboard
+
+    @staticmethod
+    def _control_spec(flow: dict, control_id: str) -> dict | None:
+        card = flow["graph"].get("card") or {}
+        return next((c for c in card.get("controls") or [] if c.get("id") == control_id), None)
+
+    @staticmethod
+    def _control_default(spec: dict) -> Any:
+        if "default" in spec:
+            return spec["default"]
+        return {"switch": False, "select": (spec.get("options") or [None])[0]}.get(spec["type"], spec.get("min", 0))
+
+    def control_value(self, flow: dict, control_id: str) -> Any:
+        """What a control is set to now: switch -> bool, dial/slider -> number, select -> text. It lives in the
+        variable "<flow id>.<control id>" (a switch is stored as "on"/"off"), so the app gets it over the websocket."""
+        spec = self._control_spec(flow, control_id)
+        if spec is None:
+            raise KeyError(control_id)
+        raw = self.store.get_var(f"{flow['id']}.{control_id}")
+        if raw is None:
+            return self._control_default(spec)
+        if spec["type"] == "switch":
+            return raw == "on"
+        if spec["type"] in ("dial", "slider"):
+            try:
+                return float(raw)
+            except ValueError:
+                return self._control_default(spec)
+        return raw
+
+    def number(self, flow: dict | str, data: dict, key: str, default: float) -> float:
+        """A numeric node setting; "{control.<id>}" means the value of that control of the flow's card."""
+        value = data.get(key, default)
+        match = CONTROL_REF.match(value) if isinstance(value, str) else None
+        if match:
+            flow = self.flows[flow] if isinstance(flow, str) else flow
+            value = self.control_value(flow, match.group(1))
+        return float(value if value not in (None, "") else default)
+
+    def set_control(self, flow_id: str, control_id: str, value: Any) -> Any:
+        """Someone used a control on the card (or an API client did). Stores the value, then starts the flow's
+        "Card control" nodes for it. Raises KeyError for an unknown control and ValueError for a bad value."""
+        flow = self.flows[flow_id]
+        spec = self._control_spec(flow, control_id)
+        if spec is None:
+            raise KeyError(control_id)
+        kind = spec["type"]
+        if kind == "switch":
+            if not isinstance(value, bool):
+                raise ValueError("a switch is true or false")
+            stored = "on" if value else "off"
+        elif kind in ("dial", "slider"):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError("a number is needed")
+            low, high, step = float(spec.get("min", 0)), float(spec.get("max", 100)), float(spec.get("step", 1)) or 1.0
+            value = round(round((min(high, max(low, float(value))) - low) / step) * step + low, 6)
+            stored = str(value)
+        elif kind == "select":
+            if value not in (spec.get("options") or []):
+                raise ValueError("not one of the options")
+            stored = str(value)
+        else:  # button: there is nothing to keep
+            stored = ""
+        if kind != "button":
+            self.store.set_var(f"{flow_id}.{control_id}", stored)
+            self.hub.broadcast({"type": "variables", "variables": self.store.variables()})
+        for ident in [k for k in self._zone if k[0] == flow_id]:
+            del self._zone[ident]  # a thermostat may be bound to this control: decide again from the reading
+        if flow["enabled"]:
+            msg = {"trigger": "control", "control": control_id, "value": value}
+            for node in flow["graph"].get("nodes", []):
+                if node.get("type") == "trigger.control" and (node.get("data") or {}).get("control") == control_id:
+                    self._fire(flow, node, msg, "out")
+                    if kind == "switch":
+                        self._fire(flow, node, msg, "on" if value else "off")
+            self._check_thermostats(flow_id)
+        return value
+
     def summary(self) -> list[dict]:
         return [{k: f[k] for k in ("id", "name", "enabled", "last_run", "last_error", "updated")}
-                | {"nodes": len(f["graph"].get("nodes", [])),
+                | {"nodes": len(f["graph"].get("nodes", [])), "card": f["graph"].get("card"),
                    "manual": any(n.get("type") == "trigger.manual" for n in f["graph"].get("nodes", []))} for f in self.flows.values()]

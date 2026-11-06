@@ -3,7 +3,11 @@ import { applyActivity, type FlowMessage } from './flow/activity.svelte.ts';
 import type { SearchState } from './integrations/types.ts';
 import { layout, type SavedLayout } from './layout.svelte.ts';
 
-export type FlowSummary = { id: string; name: string; enabled: boolean; last_run: number | null; last_error: string | null; nodes: number; manual?: boolean };
+/** A card a flow puts on the dashboard (backend flowfiles.py, the `card:` section). */
+export type CardControl = { id: string; type: 'switch' | 'dial' | 'slider' | 'button' | 'select'; label?: string; default?: unknown; min?: number; max?: number; step?: number; unit?: string; options?: string[] };
+export type CardShow = { type: 'value' | 'status' | 'graph'; label?: string; device_id?: string; key?: string; variable?: string; unit?: string };
+export type FlowCardSpec = { title?: string; controls?: CardControl[]; show?: CardShow[] };
+export type FlowSummary = { id: string; name: string; enabled: boolean; last_run: number | null; last_error: string | null; nodes: number; manual?: boolean; card?: FlowCardSpec | null };
 export type Variables = Record<string, { value: string; updated: number }>;
 export type LogLine = { time: number; message: string };
 export type FlowIssues = Record<string, { errors: string[]; warnings: string[] }>;

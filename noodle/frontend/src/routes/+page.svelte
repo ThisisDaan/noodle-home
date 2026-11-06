@@ -1,5 +1,6 @@
 <script lang="ts">
 	import DeviceCard from '#lib/DeviceCard.svelte';
+	import FlowCard from '#lib/FlowCard.svelte';
 	import Icon from '#lib/Icon.svelte';
 	import { ago, api, command, iconFor, type Device } from '#lib/api.ts';
 	import { layout, type Widget } from '#lib/layout.svelte.ts';
@@ -7,7 +8,9 @@
 	import { live } from '#lib/live.svelte.ts';
 
 	// Loaded once; a flow setting a variable pushes the new values.
-	const vars = $derived(live.variables ?? {});
+	// The values of card controls are variables too ("<flow>.<control>"), but they belong to their card.
+	const controlVars = $derived(new Set((live.flows ?? []).flatMap((f) => (f.card?.controls ?? []).map((c) => `${f.id}.${c.id}`))));
+	const vars = $derived(Object.fromEntries(Object.entries(live.variables ?? {}).filter(([name]) => !controlVars.has(name))));
 	$effect(() => {
 		api<typeof vars>('/variables').then((v) => (live.variables = v)).catch(() => {});
 	});
@@ -28,8 +31,10 @@
 
 	// The flow list is loaded once (like on the Automations page), then the server pushes changes.
 	$effect(() => {
-		if (has('flows') && !live.flows) api<typeof live.flows>('/flows').then((f) => (live.flows ??= f)).catch(() => {});
+		if (!live.flows) api<typeof live.flows>('/flows').then((f) => (live.flows ??= f)).catch(() => {});
 	});
+	// Cards that flows put on the dashboard (the `card:` of a flow file).
+	const cardFlows = $derived((live.flows ?? []).filter((f) => f.card));
 
 	function addSensor() {
 		const [device_id, key] = newSensor.split('|');
@@ -241,6 +246,8 @@
 		{/if}
 	</div>
 {/each}
+
+{#each cardFlows as f (f.id)}<FlowCard flow={f} />{/each}
 
 {#if editing}
 	<section class="bg-base-100 border-base-content/10 rounded-box mb-10 border p-4" aria-label="Add a card">

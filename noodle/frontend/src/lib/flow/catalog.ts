@@ -47,6 +47,7 @@ export const accepts = (def: NodeDef | undefined, e: { kind: string; device_clas
 export const CATALOG: NodeDef[] = [
 	{ type: 'trigger.state', label: 'Device changes', category: 'trigger', defaults: {}, kinds: ['light', 'switch', 'binary_sensor', 'sensor'] },
 	{ type: 'trigger.event', label: 'Button pressed', category: 'trigger', defaults: { action: '' }, kinds: ['button'] },
+	{ type: 'trigger.control', label: 'Card control', category: 'trigger', defaults: { control: '' } },
 	{ type: 'trigger.thermostat', label: 'Thermostat', category: 'trigger', defaults: { target: 20, margin: 0.5 }, kinds: ['sensor'], classes: ['temperature'] },
 	{ type: 'trigger.time', label: 'Time of day', category: 'trigger', defaults: { at: '07:00' } },
 	{ type: 'trigger.interval', label: 'Every…', category: 'trigger', defaults: { seconds: 60 } },
@@ -94,6 +95,7 @@ export const NODE_ICON: Record<string, string> = {
 	'trigger.state': 'bolt',
 	'trigger.event': 'circle',
 	'trigger.thermostat': 'thermo',
+	'trigger.control': 'dial',
 	'trigger.time': 'clock',
 	'trigger.interval': 'timer',
 	'trigger.webhook': 'bell',
@@ -269,8 +271,21 @@ export function outputs(type: string, d: Record<string, any>, devices: Record<st
 			{ id: 'off', label: off, tone: 'no' }
 		];
 	}
+	if (type === 'trigger.control') {
+		return [
+			{ id: 'on', label: 'Switched on', tone: 'yes' },
+			{ id: 'off', label: 'Switched off', tone: 'no' },
+			{ id: 'out', label: 'Used (with its value)', tone: 'neutral' }
+		];
+	}
 	if (type === 'trigger.thermostat') {
 		const t = Number(d.target ?? 20), m = Number(d.margin ?? 0.5);
+		if (Number.isNaN(t) || Number.isNaN(m)) {
+			return [
+				{ id: 'cold', label: 'Too cold', tone: 'no' },
+				{ id: 'warm', label: 'Warm enough', tone: 'yes' }
+			];
+		}
 		return [
 			{ id: 'cold', label: `Too cold (${t - m}° or less)`, tone: 'no' },
 			{ id: 'warm', label: `Warm enough (${t + m}° or more)`, tone: 'yes' }
@@ -370,6 +385,8 @@ export function summary(type: string, d: Record<string, any>, devices: Record<st
 			return `${d.seconds}s`;
 		case 'action.timer':
 			return `wait ${d.minutes} min, then continue`;
+		case 'trigger.control':
+			return d.control ? `card control: ${d.control}` : 'pick a card control';
 		case 'action.log':
 			return String(d.message ?? '');
 		case 'action.var':

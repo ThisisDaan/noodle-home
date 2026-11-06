@@ -1,0 +1,48 @@
+# A heater with its own card on the dashboard: a switch, a target dial, the room temperature and a status line.
+# The flow does the work; the `card:` below only says what to show. Copy to config/flows/ and change the device
+# ids to your own (a temperature sensor and a smart plug). It starts switched off.
+id: heater-card
+name: Heater
+enabled: false
+card:
+  title: Heater
+  controls:
+    - {id: heat, type: switch, label: Heating, default: false}
+    - {id: target, type: dial, label: Target, min: 5, max: 30, step: 0.5, unit: °C, default: 20}
+  show:
+    - {type: value, label: Room, device_id: 'zigbee:0x00158d0000000002', key: temperature}
+    - {type: status, label: State, variable: heater-card.status}
+nodes:
+  # Too cold / warm enough, around the dial's target (a control can be used in a number setting).
+  temp: {type: trigger.thermostat, device_id: 'zigbee:0x00158d0000000002', key: temperature, target: '{control.target}', margin: 0.5}
+  # Only heat while the Heating switch on the card is on. Its value is the variable <flow id>.<control id>.
+  allowed: {type: cond.var, name: heater-card.heat, op: eq, value: 'on'}
+  on: {type: action.device, command: 'on', device_id: 'zigbee:0x00158d0000000001', key: switch}
+  off: {type: action.device, command: 'off', device_id: 'zigbee:0x00158d0000000001', key: switch}
+  heating: {type: action.var, name: heater-card.status, value: Heating}
+  idle: {type: action.var, name: heater-card.status, value: Idle}
+  # The Heating switch on the card.
+  switch: {type: trigger.control, control: heat}
+  switched_off: {type: action.device, command: 'off', device_id: 'zigbee:0x00158d0000000001', key: switch}
+  is_off: {type: action.var, name: heater-card.status, value: 'Off'}
+  # Safety: never heat more than 2 hours in a row.
+  limit: {type: action.timer, minutes: 120, restart: false}
+  limit_off: {type: action.device, command: 'off', device_id: 'zigbee:0x00158d0000000001', key: switch}
+  limit_tell:
+    type: action.notify
+    title: Heating off
+    message: The heater was on for 2 hours straight and has been switched off.
+    priority: high
+edges:
+  - {from: temp, out: cold, to: allowed}
+  - {from: allowed, out: yes, to: on}
+  - {from: on, to: heating}
+  - {from: on, to: limit, in: start}
+  - {from: temp, out: warm, to: off}
+  - {from: off, to: idle}
+  - {from: off, to: limit, in: stop}
+  - {from: switch, out: off, to: switched_off}
+  - {from: switched_off, to: is_off}
+  - {from: switched_off, to: limit, in: stop}
+  - {from: limit, to: limit_off}
+  - {from: limit_off, to: limit_tell}

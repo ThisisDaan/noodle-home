@@ -642,6 +642,22 @@ async def run_flow(flow_id: str) -> dict:
     return {"started": await flows.run_flow(flow_id)}
 
 
+class ControlBody(BaseModel):
+    value: bool | float | str | None = None
+
+
+@app.post("/api/flows/{flow_id}/controls/{control_id}", dependencies=[Depends(require_login)])
+def use_control(flow_id: str, control_id: str, body: ControlBody) -> dict:
+    """Use a control of the flow's card (the dashboard calls this; a button needs no value)."""
+    _flow(flow_id)
+    try:
+        return {"value": flows.set_control(flow_id, control_id, body.value)}
+    except KeyError:
+        raise HTTPException(404, "Unknown control")
+    except ValueError as err:
+        raise HTTPException(400, str(err))
+
+
 @app.get("/api/flows/{flow_id}/activity", dependencies=[Depends(require_login)])
 def flow_activity(flow_id: str) -> dict:
     _flow(flow_id)

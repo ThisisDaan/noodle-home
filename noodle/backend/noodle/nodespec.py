@@ -28,6 +28,10 @@ CORE: dict[str, dict] = {
         "help": "Outputs 'cold' (at or below target - margin) and 'warm' (at or above target + margin), once per crossing. "
                 "Input 'check' re-reads the temperature now.",
         "fields": {**DEVICE, "target": ("num", "Target temperature in °C"), "margin": ("num", "Degrees either side of the target")}},
+    "trigger.control": {
+        "label": "Card control", "category": "trigger",
+        "help": "Fires when a control of this flow's card is used. Output 'out' carries the value; a switch also has 'on' and 'off'.",
+        "fields": {"control": ("str", "Id of the card control")}},
     "trigger.time": {
         "label": "Time of day", "category": "trigger", "help": "Fires every day (or on the given weekdays) at a time.",
         "fields": {"at": ("str", "Time as HH:MM"), "days": ("list", "Weekdays, Monday = 0; empty = every day")}},
