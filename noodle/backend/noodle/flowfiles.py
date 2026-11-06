@@ -274,7 +274,7 @@ def validate(doc: Any) -> tuple[list[str], list[str]]:
     for nid, node in nodes.items():
         if not isinstance(node, Mapping):
             continue
-        if node.get("type") == "trigger.control" and node.get("control") not in controls:
+        if node.get("type") in ("trigger.control", "cond.control") and node.get("control") not in controls:
             errors.append(f"node {nid}: control '{node.get('control')}' is not a control of the card")
         for key, value in node.items():
             match = CONTROL_REF_RE.match(value) if isinstance(value, str) else None

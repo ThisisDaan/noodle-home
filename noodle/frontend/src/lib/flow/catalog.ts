@@ -59,6 +59,7 @@ export const CATALOG: NodeDef[] = [
 	{ type: 'cond.state', label: 'Check state', category: 'condition', defaults: {}, kinds: ['light', 'switch', 'binary_sensor', 'sensor'] },
 	{ type: 'cond.for', label: 'In state for…', category: 'condition', defaults: { state: 'on', minutes: 10 }, kinds: ['light', 'switch', 'binary_sensor', 'sensor'] },
 	{ type: 'cond.time', label: 'Between times', category: 'condition', defaults: { from: '22:00', to: '06:30' } },
+	{ type: 'cond.control', label: 'Card control is…', category: 'condition', defaults: { control: '', value: 'on' } },
 	{ type: 'cond.var', label: 'Check variable', category: 'condition', defaults: { name: 'status', op: 'eq', value: '' } },
 	{ type: 'action.device', label: 'Control device', category: 'action', defaults: { inputs: ['toggle'], brightness: 50, step: 5, min: 1, loop_levels: [25, 50, 75, 100], loop_seconds: 1, loop_max_seconds: 60 }, kinds: ['light', 'switch', 'fan', 'cover', 'lock', 'climate'] },
 	{ type: 'action.throttle', label: 'Only once per…', category: 'action', defaults: { minutes: 5 } },
@@ -110,6 +111,7 @@ export const NODE_ICON: Record<string, string> = {
 	'cond.for': 'timer',
 	'cond.time': 'clock',
 	'cond.var': 'variable',
+	'cond.control': 'dial',
 	'action.device': 'bulb',
 	'action.cycle': 'branch',
 	'action.repeat': 'timer',
@@ -346,7 +348,8 @@ export function summary(type: string, d: Record<string, any>, devices: Record<st
 			return d.device_id && !(d.outputs ?? []).length ? `${dev} · tick what to react to` : dev;
 		case 'trigger.thermostat': {
 			const now = devices[d.device_id]?.entities.find((e) => e.key === d.key)?.state;
-			return `${dev}: aim for ${d.target} °C${typeof now === 'number' ? ` (now ${now} °C)` : ''}`;
+			const target = typeof d.target === 'string' && d.target.startsWith('{control.') ? 'the target on the card' : `${d.target} °C`;
+			return `${dev}: aim for ${target}${typeof now === 'number' ? ` (now ${now} °C)` : ''}`;
 		}
 		case 'trigger.time':
 			return `${d.days?.length ? d.days.map((i: number) => DAY_NAMES[i]).join(', ') : 'every day'} at ${d.at}`;
@@ -387,6 +390,8 @@ export function summary(type: string, d: Record<string, any>, devices: Record<st
 			return `wait ${d.minutes} min, then continue`;
 		case 'trigger.control':
 			return d.control ? `card control: ${d.control}` : 'pick a card control';
+		case 'cond.control':
+			return d.control ? `${d.control} is ${d.value === '' || d.value == null ? 'on' : d.value}` : 'pick a card control';
 		case 'action.log':
 			return String(d.message ?? '');
 		case 'action.var':

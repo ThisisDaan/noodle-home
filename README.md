@@ -57,27 +57,18 @@ In Docker: `docker compose exec noodle python -m noodle validate`. `GET /api/flo
 ## Cards: a flow with its own controls on the dashboard
 
 A flow can put a card on the dashboard, so one automation becomes something you can use: a heater with a switch and a
-target dial, a timer with a start button, a scene picker. The flow does the work; the card is only its face. Add a
-`card:` section to the flow file (see `noodle/backend/noodle/examples/flows/heater-card.yaml`):
+target dial, a timer with a start button, a scene picker. The flow does the work; the card is only its face.
 
-```yaml
-card:
-  title: Heater
-  controls:
-    - {id: heat, type: switch, label: Heating}
-    - {id: target, type: dial, label: Target, min: 5, max: 30, step: 0.5, unit: °C, default: 20}
-  show:
-    - {type: value, label: Room, device_id: 'zigbee:0x...', key: temperature}
-    - {type: status, label: State, variable: heater-card.status}
-```
+- **Quick start**: Automations, New, **Heater with a dashboard card**. Pick a room sensor and a plug; the flow and the card are made for you.
+- **Your own**: open any flow and press **Dashboard card** above the editor. Add controls (switch, dial, slider, button, choice) and
+  what to show (a reading, a status line, a graph). Nothing to type but names and numbers.
+- **Use the controls in the flow**: a **Card control** step starts when a control is used (a switch has *Switched on* and *Switched off*);
+  **Card control is...** checks its value; and a number setting (a thermostat's target, a timer's minutes) can be set to *From <control>*
+  in its properties.
+- The card appears on the dashboard while the flow exists; its controls only work while the flow is switched on. New flows from
+  files or an AI start switched off, like always.
 
-- **Controls**: `switch`, `dial`, `slider`, `button`, `select`. Using one starts the flow's *Card control* node
-  (`trigger.control`, `control: heat`; a switch has `on` and `off` outputs). Its value is kept in the variable
-  `<flow id>.<control id>`, so a *Check variable* node can test it, and any number setting can use it as
-  `{control.target}` (a thermostat's target, a timer's minutes).
-- **Show**: a live `value` of a device reading, a `status` line (the variable a *Set variable* step writes) or a `graph`.
-- The card appears on the dashboard while the flow exists; its controls only work while the flow is switched on.
-  New flows from files or an AI start switched off, like always. The visual editor keeps the card when you save the flow.
+(It is all stored in the flow's file, under `card:`, and an AI can write it too: see `noodle/backend/noodle/examples/flows/heater-card.yaml`.)
 
 ## Other config files
 

@@ -21,6 +21,7 @@ python -m noodle validate                                             # check fl
 
 ## Rules for changes
 
+- **A user never has to touch a YAML file.** The files are how things are stored and what an AI or a power user may write, but every feature (flows, cards, settings, areas, dashboard) must be fully usable and editable in the app, with pickers and dropdowns instead of typed ids. A feature that can only be set up in YAML is not finished.
 - New flows from files or an AI start switched off; keep it that way (`FlowEngine._apply_file`, `/api/flow/import`).
 - Anything that migrates a user's data needs a test with the old shape and must be safe to run twice.
 - Keep personal device ids, names and addresses out of the code and examples. Use placeholders.

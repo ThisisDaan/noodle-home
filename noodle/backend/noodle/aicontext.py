@@ -30,7 +30,7 @@ Rules
   action.var step writes) and {type: graph, device_id, key}. A control starts a trigger.control node with
   data {control: <id>} (outputs "on"/"off" for a switch, "out" with the value for all); a numeric setting of any
   node (thermostat target and margin, timer minutes) may be "{control.<id>}" to use the control's value; a
-  cond.var on the variable "<flow id>.<control id>" checks a switch ("on"/"off"). Use a card when the request
+  cond.control {control, value} checks one ("on"/"off" for a switch). Use a card when the request
   wants something to look at or adjust on the dashboard; see the heater-card example.
 - Always write `enabled: false`. A person switches a flow on after reading it.
 - Keep it simple and add a short comment above each step saying what it does. Prefer an action.timer or

@@ -133,3 +133,34 @@ def test_the_flow_summary_carries_the_card_and_the_api_needs_login(engine):
     from noodle import main
     assert next(f for f in engine.summary() if f["id"] == "card-test")["card"]["controls"][0]["id"] == "heat"
     assert TestClient(main.app).post("/api/flows/card-test/controls/heat", json={"value": True}).status_code == 401
+
+
+def test_card_control_is_checks_the_value_of_a_control(engine):
+    flow = engine.flows["card-test"]
+    assert engine._control_is(flow, {"control": "heat"}) is False  # switch default: off
+    engine.set_control("card-test", "heat", True)
+    assert engine._control_is(flow, {"control": "heat"}) is True
+    assert engine._control_is(flow, {"control": "heat", "value": "on"}) is True
+    assert engine._control_is(flow, {"control": "heat", "value": "off"}) is False
+    engine.set_control("card-test", "target", 22)
+    assert engine._control_is(flow, {"control": "target", "value": 22}) is True
+    assert engine._control_is(flow, {"control": "target", "value": "hot"}) is False
+    assert engine._control_is(flow, {"control": "nope"}) is False
+
+
+def test_cond_control_nodes_are_checked_against_the_card():
+    d = doc()
+    d["nodes"]["only"] = {"type": "cond.control", "control": "gone"}
+    assert any("'gone' is not a control" in e for e in flowfiles.validate(d)[0])
+    d["nodes"]["only"] = {"type": "cond.control", "control": "heat", "value": "on"}
+    assert flowfiles.validate(d)[0] == []
+
+
+def test_a_bad_card_from_the_app_is_refused_with_a_reason(engine):
+    from fastapi import HTTPException
+    from noodle import main
+    with pytest.raises(HTTPException) as err:
+        main._check_card_in({"card": {"controls": [{"id": "x", "type": "wheel"}]}})
+    assert err.value.status_code == 400 and "type must be one of" in err.value.detail
+    main._check_card_in({"card": DOC["card"]})  # a good one passes
+    main._check_card_in({"nodes": []})  # no card: nothing to check

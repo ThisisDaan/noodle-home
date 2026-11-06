@@ -604,8 +604,18 @@ async def list_flows() -> list[dict]:
     return flows.summary()
 
 
+def _check_card_in(graph: dict | None) -> None:
+    """A card sent by the app must be a good one: say what is wrong instead of saving it."""
+    if graph and graph.get("card"):
+        errors: list[str] = []
+        flowfiles._check_card(graph["card"], errors, [])
+        if errors:
+            raise HTTPException(400, "; ".join(errors))
+
+
 @app.post("/api/flows", dependencies=[Depends(require_login)])
 def create_flow(body: FlowBody) -> dict:
+    _check_card_in(body.graph)
     return flows.create(body.name or "New flow", body.graph)
 
 
@@ -617,6 +627,7 @@ def get_flow(flow_id: str) -> dict:
 @app.put("/api/flows/{flow_id}", dependencies=[Depends(require_login)])
 def update_flow(flow_id: str, body: FlowBody) -> dict:
     _flow(flow_id)
+    _check_card_in(body.graph)
     return flows.update(flow_id, body.name, body.graph, body.enabled)
 
 

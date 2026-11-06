@@ -16,6 +16,7 @@ of nodes that have more than one):
                     and "on" / "off" when the control is a switch
   trigger.control   a control of the flow's card was used   data: control (its id); outputs "out" (msg value),
                     and "on" / "off" when the control is a switch
+  cond.control      a card control has a value   data: control, value (switch: "on"/"off"); outputs yes / no
   trigger.time      every day at a time          data: at ("HH:MM")
   trigger.interval  every N seconds              data: seconds
   cond.state        entity is on/off             outputs "on" / "off"; with op =/>/< (numbers): "yes" / "no"
@@ -692,6 +693,8 @@ class FlowEngine:
         elif kind == "cond.state" and d.get("op") in (None, ""):
             _, entity = self._entity(d)
             await self._follow(flow, node, msg, "on" if entity and entity.state is True else "off", steps)
+        elif kind == "cond.control":
+            await self._follow(flow, node, msg, "yes" if self._control_is(flow, d) else "no", steps)
         elif kind.startswith("cond."):
             handle = "yes" if self._check(kind, d) else "no"
             await self._follow(flow, node, msg, handle, steps)
@@ -972,6 +975,22 @@ class FlowEngine:
             except ValueError:
                 return self._control_default(spec)
         return raw
+
+    def _control_is(self, flow: dict, d: dict) -> bool:
+        """The check behind "Card control is...": the control has this value (a switch: on / off, none means on)."""
+        try:
+            value = self.control_value(flow, str(d.get("control") or ""))
+        except KeyError:
+            return False
+        want = d.get("value")
+        if isinstance(value, bool):
+            return value == (True if want in (None, "") else str(want).lower() in ("on", "true", "yes", "1"))
+        if isinstance(value, float):
+            try:
+                return value == float(want)
+            except (TypeError, ValueError):
+                return False
+        return str(value) == str(want)
 
     def number(self, flow: dict | str, data: dict, key: str, default: float) -> float:
         """A numeric node setting; "{control.<id>}" means the value of that control of the flow's card."""
