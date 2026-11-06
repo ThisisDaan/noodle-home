@@ -4,6 +4,7 @@
 	import { api, ApiError } from '#lib/api.ts';
 	import DeviceSheet from '#lib/DeviceSheet.svelte';
 	import CombineDialog from '#lib/CombineDialog.svelte';
+	import CustomDeviceDialog from '#lib/CustomDeviceDialog.svelte';
 	import GroupDialog from '#lib/GroupDialog.svelte';
 	import Icon from '#lib/Icon.svelte';
 	import Logo from '#lib/Logo.svelte';
@@ -144,5 +145,6 @@
 	<DeviceSheet />
 	<GroupDialog />
 	<CombineDialog />
+	<CustomDeviceDialog />
 	{#if status.wizard}<Wizard onfinish={refresh} />{/if}
 {/if}

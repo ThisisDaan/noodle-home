@@ -68,7 +68,8 @@ export const CATALOG: NodeDef[] = [
 	{ type: 'action.delay', label: 'Wait', category: 'action', defaults: { seconds: 5 }, available: false }, // old flows only: use Timer
 	{ type: 'action.timer', label: 'Timer', category: 'action', defaults: { minutes: 5, restart: true } },
 	{ type: 'action.log', label: 'Log message', category: 'action', defaults: { message: 'Something happened' } },
-	{ type: 'action.var', label: 'Set variable', category: 'action', defaults: { name: 'status', value: '' } }
+	{ type: 'action.write', label: 'Write to entity', category: 'action', defaults: { device_id: '', key: '', value: '' } },
+	{ type: 'action.var', label: 'Set variable (old)', category: 'action', defaults: { name: 'status', value: '' }, available: false }
 ];
 
 export const DEFS: Record<string, NodeDef> = Object.fromEntries(CATALOG.map((d) => [d.type, d]));
@@ -114,7 +115,8 @@ export const NODE_ICON: Record<string, string> = {
 	'action.delay': 'pause',
 	'action.timer': 'timer',
 	'action.log': 'note',
-	'action.var': 'variable'
+	'action.var': 'variable',
+	'action.write': 'variable'
 };
 
 export type Output = { id: string; label: string; tone: 'yes' | 'no' | 'neutral'; group?: string };
@@ -374,6 +376,8 @@ export function summary(type: string, d: Record<string, any>, devices: Record<st
 			return String(d.message ?? '');
 		case 'action.var':
 			return `${d.name} = ${d.value}`;
+		case 'action.write':
+			return d.device_id && d.key ? `${devices[d.device_id]?.name ?? d.device_id} · ${devices[d.device_id]?.entities.find((e) => e.key === d.key)?.name ?? d.key} = ${d.value === '' ? '(empty)' : d.value}` : 'pick a custom device';
 		case 'cond.var':
 			return `${d.name} ${d.op === 'eq' ? '=' : '≠'} ${d.value || '(empty)'}`;
 		case 'trigger.webhook':

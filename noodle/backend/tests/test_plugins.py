@@ -23,7 +23,7 @@ def test_plugin_fields_and_forget_are_known_settings():
 
 def test_every_adapter_source_is_registered():
     from noodle import main
-    assert set(main.ADAPTERS) == {"zigbee", "matter", "ble", "hue", "lifx", "group", "phone", "shelly", "wled", "kasa", "wiz", "yeelight", "govee", "roku", "yamaha", "pihole", "unifi", "sonos", "nanoleaf", "mqtt", "homeassistant", "dirigera", "combined"}
+    assert set(main.ADAPTERS) == {"zigbee", "matter", "ble", "hue", "lifx", "group", "phone", "shelly", "wled", "kasa", "wiz", "yeelight", "govee", "roku", "yamaha", "pihole", "unifi", "sonos", "nanoleaf", "mqtt", "homeassistant", "dirigera", "combined", "custom"}
     assert main.ADAPTERS["zigbee"] is main.zigbee and main.hub.adapters.keys() >= main.ADAPTERS.keys()
 
 

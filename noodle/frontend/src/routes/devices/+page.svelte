@@ -3,6 +3,7 @@
 	import AddDevice from '#lib/integrations/AddDevice.svelte';
 	import Icon from '#lib/Icon.svelte';
 	import type { Device } from '#lib/api.ts';
+	import { customEditor } from '#lib/custom.svelte.ts';
 	import { groupEditor } from '#lib/groups.svelte.ts';
 	import { layout } from '#lib/layout.svelte.ts';
 	import { live } from '#lib/live.svelte.ts';
@@ -78,6 +79,9 @@
 	<div class="flex shrink-0 items-center gap-2">
 		<button class="btn btn-sm btn-ghost" onclick={() => groupEditor.create()} aria-label="New light group">
 			<Icon name="bulb" class="size-4" /><span class="hidden sm:inline">New light group</span><span class="sm:hidden">Group</span>
+		</button>
+		<button class="btn btn-sm btn-ghost" onclick={() => customEditor.create()} aria-label="New custom device">
+			<Icon name="variable" class="size-4" /><span class="hidden sm:inline">New custom device</span><span class="sm:hidden">Custom</span>
 		</button>
 		<AddDevice />
 	</div>

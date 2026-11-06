@@ -6,6 +6,7 @@
 	import { faceEntities, sheetFace } from './devices/kinds.ts';
 	import { ago, api, controllable, formatState, headline, iconFor, isOn } from './api';
 	import { combineEditor } from './combine.svelte';
+	import { customEditor } from './custom.svelte';
 	import { groupEditor } from './groups.svelte';
 	import { layout, ui } from './layout.svelte';
 	import { live, type HistoryRow } from './live.svelte';
@@ -204,6 +205,14 @@
 					</section>
 				{/if}
 
+				{#if device.source === 'custom'}
+					<section class="flex flex-col gap-2">
+						<h3 class="text-xs font-semibold tracking-wide uppercase opacity-60">Made by you</h3>
+						<button class="btn btn-outline" onclick={() => { const id = device.id.split(':')[1]; ui.close(); customEditor.edit(id); }}>
+							Edit (name and fields)
+						</button>
+					</section>
+				{/if}
 				{#if device.source === 'combined'}
 					<section class="flex flex-col gap-2">
 						<h3 class="text-xs font-semibold tracking-wide uppercase opacity-60">Made from other devices</h3>

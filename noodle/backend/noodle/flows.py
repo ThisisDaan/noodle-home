@@ -34,7 +34,8 @@ of nodes that have more than one):
   (action.notify and action.speak are added by plugins, see plugins/notifications/ and plugins/speak/;
    integrations can add more nodes with Plugin.nodes())
   action.var        set a variable               data: name, value
-  cond.var          variable equals / differs    data: name, op ("eq"|"neq"), value
+  cond.var          variable equals / differs    data: name, op ("eq"|"neq"), value (variables are the text fields
+                    of the built-in "Variables" device)
   trigger.webhook   POST /api/hook/<token>/<name> (e.g. from a notification button)  data: name
   trigger.sun       at sunrise or sunset          data: event ("sunrise"|"sunset"), offset (minutes, - = before)
   trigger.manual    the Run button of the flow (and the "Run flow" action of other flows)
@@ -696,11 +697,19 @@ class FlowEngine:
         elif kind == "action.log":
             self.add_log(flow["id"], _fill(d.get("message"), msg))
             await self._follow(flow, node, msg, "out", steps)
-        elif kind == "action.var":
+        elif kind == "action.var":  # a variable is a text field of the built-in Variables device
             name, value = str(d.get("name") or ""), _fill(d.get("value"), msg)
-            self.store.set_var(name, value)
-            self.hub.broadcast({"type": "variables", "variables": self.store.variables()})
+            self.hub.adapters["custom"].set_variable(name, value)
             self.add_log(flow["id"], f"{name} = {value}")
+            await self._follow(flow, node, msg, "out", steps)
+        elif kind == "action.write":
+            value = _fill(d.get("value"), msg)
+            device_id, key = str(d.get("device_id") or ""), str(d.get("key") or "")
+            device = self.hub.devices.get(device_id)
+            if device is None or device.source != "custom":
+                raise LookupError("Write to entity needs a custom device")
+            self.hub.adapters["custom"].write(device_id.split(":", 1)[1], key, value)
+            self.add_log(flow["id"], f"{device.name} · {key} = {value}")
             await self._follow(flow, node, msg, "out", steps)
         elif kind == "action.throttle":
             key, now = (flow["id"], node["id"]), time.time()
@@ -753,7 +762,7 @@ class FlowEngine:
 
     def _check(self, kind: str, d: dict) -> bool:
         if kind == "cond.var":
-            same = (self.store.get_var(str(d.get("name") or "")) or "") == str(d.get("value") or "")
+            same = (self.hub.adapters["custom"].get_variable(str(d.get("name") or "")) or "") == str(d.get("value") or "")
             return same if d.get("op", "eq") == "eq" else not same
         if kind == "cond.day":
             return datetime.now().weekday() in (d.get("days") or [])

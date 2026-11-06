@@ -7,10 +7,10 @@
 	import { live } from '#lib/live.svelte.ts';
 
 	// Loaded once; a flow setting a variable pushes the new values.
-	const vars = $derived(live.variables ?? {});
-	$effect(() => {
-		api<typeof vars>('/variables').then((v) => (live.variables = v)).catch(() => {});
-	});
+	const variablesDevice = $derived(live.list.find((d) => d.id === 'custom:variables'));
+	const vars = $derived(
+		Object.fromEntries((variablesDevice?.entities ?? []).map((e) => [e.name, { value: e.state == null ? '' : String(e.state), updated: variablesDevice?.last_seen ?? null }]))
+	);
 
 	const widgets = $derived(layout.activeWidgets);
 	const WIDGET_NAMES: Record<Widget['type'], string> = {

@@ -690,7 +690,7 @@ async def update_install() -> dict:
 
 @app.get("/api/variables", dependencies=[Depends(require_login)])
 def variables() -> dict:
-    return store.variables()
+    return ADAPTERS["custom"].variables()
 
 
 @app.post("/api/hook/{token}/{name}")

@@ -16,7 +16,6 @@ type Message =
 	| { type: 'areas'; areas: string[] }
 	| { type: 'layout'; layout: SavedLayout }
 	| { type: 'flows'; flows: FlowSummary[] }
-	| { type: 'variables'; variables: Variables }
 	| { type: 'log'; flow_id: string; line: LogLine }
 	| { type: 'device'; device: Device }
 	| { type: 'removed'; id: string }
@@ -34,7 +33,6 @@ class Live {
 	homeName = $state('');
 	/** Problems found in flow files that were edited by hand (file name -> errors and warnings). */
 	flowIssues = $state<FlowIssues>({});
-	variables = $state<Variables | null>(null);
 	/** Called with each new flow log line. */
 	logListeners = new Set<(flowId: string, line: LogLine) => void>();
 	/** Called with each new history row of any device. */
@@ -94,8 +92,6 @@ class Live {
 				delete this.devices[msg.id];
 			} else if (msg.type === 'flows') {
 				this.flows = msg.flows;
-			} else if (msg.type === 'variables') {
-				this.variables = msg.variables;
 			} else if (msg.type === 'log') {
 				for (const listener of this.logListeners) listener(msg.flow_id, msg.line);
 			} else if (msg.type === 'history') {

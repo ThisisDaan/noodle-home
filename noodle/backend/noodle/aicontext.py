@@ -24,6 +24,9 @@ Rules
 - Outputs: trigger.state has one output per ticked change, named "<entity key>:on", "<entity key>:off" or
   "<entity key>:out" (numbers); trigger.event one per ticked press "<button key>:<press>"; cond.* nodes have
   "yes"/"no" (on/off entities "on"/"off"); everything else "out".
+- To keep something a flow knows (a status, a count, a switch) use a custom device: the "Write to entity" step sets
+  one of its fields (data: device_id "custom:<id>", key, value) and any other flow can react to it with "Device
+  changes". Only use custom devices that appear in "Devices"; never invent one.
 - Always write `enabled: false`. A person switches a flow on after reading it.
 - Keep it simple and add a short comment above each step saying what it does. Prefer an action.timer or
   cond.for over polling (use action.timer for any wait, never action.delay: it is lost on a restart), and add a safety net (for example a timer that switches a heater off) when the
@@ -74,7 +77,7 @@ def build(hub, engine, store) -> dict:
         "nodes": nodes(),
         "devices": devices(hub),
         "areas": store.areas(),
-        "variables": sorted(store.variables()),
+        "variables": sorted(hub.adapters["custom"].variables()),
         "flows": [{"id": f["id"], "name": f["name"], "enabled": f["enabled"]} for f in engine.flows.values()],
         "examples": examples(),
     }
