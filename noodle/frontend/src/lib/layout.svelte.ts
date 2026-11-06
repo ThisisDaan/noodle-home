@@ -1,4 +1,5 @@
 import { api } from './api';
+import type { CardDesign } from './devices/cardDesign.ts';
 import { placeBefore } from './order.ts';
 
 export type Widget = {
@@ -18,6 +19,8 @@ export type SavedLayout = {
 	/** null: the default cards */
 	widgets: Widget[] | null;
 	devices_view: DevicesView;
+	/** How devices' cards are designed, by device id (see devices/cardDesign.ts) */
+	cards?: Record<string, CardDesign>;
 };
 
 export const DEFAULT_WIDGETS: Widget[] = [{ type: 'status' }, { type: 'favourites' }, { type: 'rooms' }];
@@ -30,6 +33,7 @@ class Layout {
 	order = $state<string[]>([]);
 	widgets = $state<Widget[] | null>(null);
 	devicesView = $state<DevicesView>({ group_by: 'room', sort: 'name' });
+	cards = $state<Record<string, CardDesign>>({});
 	editing = $state(false);
 	saving = $state(false);
 	#timer: ReturnType<typeof setTimeout> | undefined;
@@ -38,6 +42,7 @@ class Layout {
 	/** Take over a layout the server sends (the file was edited by hand). */
 	apply(s: SavedLayout) {
 		this.rooms = s.rooms;
+		this.cards = s.cards ?? {};
 		this.hidden = s.hidden;
 		this.favorites = s.favorites;
 		this.order = s.order;
@@ -69,6 +74,15 @@ class Layout {
 		this.#save();
 	}
 
+	/** Save how a device's card looks, or null to give it its own look back. */
+	setCard(deviceId: string, design: CardDesign | null) {
+		const next = { ...this.cards };
+		if (design) next[deviceId] = design;
+		else delete next[deviceId];
+		this.cards = next;
+		this.#save();
+	}
+
 	setDevicesView(patch: Partial<DevicesView>) {
 		this.devicesView = { ...this.devicesView, ...patch };
 		this.#save();
@@ -97,7 +111,8 @@ class Layout {
 						favorites: this.favorites,
 						order: this.order,
 						...(this.widgets ? { widgets: this.widgets } : {}),
-						devices_view: this.devicesView
+						devices_view: this.devicesView,
+						cards: this.cards
 					}
 				});
 			} finally {

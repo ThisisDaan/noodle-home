@@ -14,6 +14,9 @@ class FieldBody(BaseModel):
     label: str = Field(max_length=40)
     type: str
     unit: str | None = Field(default=None, max_length=10)
+    min: float | None = None
+    max: float | None = None
+    step: float | None = None
 
 
 class CustomBody(BaseModel):

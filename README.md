@@ -54,6 +54,33 @@ noodle schema      # JSON Schema of the format, with the nodes you have installe
 
 In Docker: `docker compose exec noodle python -m noodle validate`. `GET /api/flow/schema` serves the same schema; device ids for `device_id` come from `GET /api/devices`. Format and an example: `noodle/backend/noodle/flowfiles.py`. Letting an AI write flows is described in [docs/AI.md](docs/AI.md).
 
+## Custom devices and cards
+
+**Custom devices.** Devices page, *New custom device*: make a device of your own with the things it should remember, each an
+on/off, a number (with a unit and optionally a lowest, highest and step) or text. An automation fills them in with the
+**Write to entity** step, and they work like any other device: you see them on the Devices page, other automations react to
+them with *Device changes* and checks, and they can be put on the dashboard. The old flow variables are the text fields of a
+built-in *Variables* device now (*Set variable* and *Check variable* keep working).
+
+**Cards.** Every device can have a designed card: open the device and press *Design the card*. Pick a size (small, wide or
+large), tap a slot and choose a component and which field it uses:
+
+| Size | Slots |
+|---|---|
+| Small (today's tile) | 2 |
+| Wide (two tiles wide) | 4 |
+| Large (two wide, two high) | 12 |
+
+| Component | Takes | For |
+|---|---|---|
+| Switch | 1 | something that can be on or off |
+| Value | 1 | any reading or text |
+| Dial (− and +) | 2 | a number, or a thermostat's target |
+| Slider | 2 | a number, or a light's brightness |
+| Graph | 2 x 2 | the last hours of a number |
+
+A device without a design keeps the look it has. The designs are kept in `dashboard.yaml` under `cards`.
+
 ## Other config files
 
 Next to `flows/` in `<data>/config/`, all YAML, all editable by hand (the app picks up an edit within a couple of seconds and keeps your comments when it saves):

@@ -5,6 +5,7 @@
 	import DeviceFace from './devices/DeviceFace.svelte';
 	import { faceEntities, sheetFace } from './devices/kinds.ts';
 	import { ago, api, controllable, formatState, headline, iconFor, isOn } from './api';
+	import { cardDesigner } from './designer.svelte';
 	import { combineEditor } from './combine.svelte';
 	import { customEditor } from './custom.svelte';
 	import { groupEditor } from './groups.svelte';
@@ -205,6 +206,12 @@
 					</section>
 				{/if}
 
+				<section class="flex flex-col gap-2">
+					<h3 class="text-xs font-semibold tracking-wide uppercase opacity-60">Card</h3>
+					<button class="btn btn-outline" onclick={() => { const id = device.id; ui.close(); cardDesigner.open(id); }}>
+						{layout.cards[device.id] ? 'Change the card design' : 'Design the card'}
+					</button>
+				</section>
 				{#if device.source === 'custom'}
 					<section class="flex flex-col gap-2">
 						<h3 class="text-xs font-semibold tracking-wide uppercase opacity-60">Made by you</h3>

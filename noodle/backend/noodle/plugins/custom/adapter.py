@@ -113,8 +113,19 @@ class CustomAdapter:
             raise ValueError(f"Two fields are called {label}")
         taken.add(key)
         field = {"key": key, "label": label, "type": kind}
-        if kind == "number" and str(raw.get("unit") or "").strip():
-            field["unit"] = str(raw["unit"]).strip()[:10]
+        if kind == "number":
+            if str(raw.get("unit") or "").strip():
+                field["unit"] = str(raw["unit"]).strip()[:10]
+            for limit in ("min", "max", "step"):  # the range a dial or slider on the card uses
+                value = raw.get(limit)
+                if value is not None and value != "":
+                    if isinstance(value, bool) or not isinstance(value, (int, float)):
+                        raise ValueError(f"{label}: {limit} must be a number")
+                    field[limit] = value
+            if "min" in field and "max" in field and field["min"] >= field["max"]:
+                raise ValueError(f"{label}: the lowest must be below the highest")
+            if field.get("step", 1) <= 0:
+                raise ValueError(f"{label}: the step must be above 0")
         return field
 
     def save(self, name: str, fields: list[dict], device_id: str | None = None) -> dict:
@@ -240,7 +251,8 @@ class CustomAdapter:
             raw = self._raw(device["id"], f["key"])
             state = self._typed(f, raw[0] if raw else None)
             kind = {"switch": "switch", "number": "number", "text": "sensor"}[f["type"]]
-            entities[f["key"]] = Entity(f["key"], kind, f["label"], state=state, unit=f.get("unit"))
+            entities[f["key"]] = Entity(f["key"], kind, f["label"], state=state, unit=f.get("unit"),
+                                        attrs={k: f[k] for k in ("min", "max", "step") if k in f})
         device_id = f"custom:{device['id']}"
         existing = self.hub.devices.get(device_id)
         if existing:

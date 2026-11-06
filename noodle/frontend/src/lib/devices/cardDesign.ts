@@ -1,0 +1,59 @@
+import type { Entity } from '../api.ts';
+
+/** How a device's card is designed: a size (a grid of slots) and components placed in it. Stored in the dashboard
+ * layout (backend main.py CARD_SIZES / CARD_COMPONENTS must say the same). A device without a design keeps its
+ * own look (DeviceFace). */
+export type CardSize = 'small' | 'wide' | 'large';
+export type CardComponentType = 'switch' | 'value' | 'dial' | 'slider' | 'graph';
+export type CardSlot = { at: number; component: CardComponentType; key: string; label?: string };
+export type CardDesign = { size: CardSize; slots: CardSlot[] };
+
+/** cols x rows of slots. Small is today's tile; wide takes two tiles side by side; large two by two. */
+export const SIZES: Record<CardSize, { cols: number; rows: number; label: string; hint: string }> = {
+	small: { cols: 2, rows: 1, label: 'Small', hint: '2 slots' },
+	wide: { cols: 4, rows: 1, label: 'Wide', hint: '4 slots' },
+	large: { cols: 4, rows: 3, label: 'Large', hint: '12 slots' }
+};
+
+/** A component fills w x h slots. */
+export const COMPONENTS: Record<CardComponentType, { w: number; h: number; label: string; hint: string }> = {
+	switch: { w: 1, h: 1, label: 'Switch', hint: 'Tap to turn on or off' },
+	value: { w: 1, h: 1, label: 'Value', hint: 'Shows a reading or text' },
+	dial: { w: 2, h: 1, label: 'Dial', hint: 'Plus and minus buttons for a number' },
+	slider: { w: 2, h: 1, label: 'Slider', hint: 'Drag to set a number' },
+	graph: { w: 2, h: 2, label: 'Graph', hint: 'The last hours of a reading' }
+};
+
+export const slotCount = (size: CardSize) => SIZES[size].cols * SIZES[size].rows;
+
+/** The slot numbers a component at `at` covers, or null when it would stick out of the card. */
+export function cells(size: CardSize, at: number, component: CardComponentType): number[] | null {
+	const { cols, rows } = SIZES[size];
+	const { w, h } = COMPONENTS[component];
+	const x = at % cols, y = Math.floor(at / cols);
+	if (at < 0 || x + w > cols || y + h > rows) return null;
+	return Array.from({ length: h }, (_, j) => Array.from({ length: w }, (_, i) => (y + j) * cols + x + i)).flat();
+}
+
+/** Whether a component fits at a slot without covering another one (`ignore` = the slot being edited). */
+export function fits(design: CardDesign, at: number, component: CardComponentType, ignore = -1): boolean {
+	const mine = cells(design.size, at, component);
+	if (!mine) return false;
+	return design.slots.every((s, i) => i === ignore || !cells(design.size, s.at, s.component)?.some((c) => mine.includes(c)));
+}
+
+/** Which fields of a device a component can show or control. */
+export function compatible(component: CardComponentType, e: Entity): boolean {
+	switch (component) {
+		case 'switch': return e.kind === 'switch' || e.kind === 'light' || e.kind === 'fan';
+		case 'value': return e.kind !== 'button';
+		case 'dial': return e.kind === 'number' || e.kind === 'climate';
+		case 'slider': return e.kind === 'number' || (e.kind === 'light' && e.brightness !== null);
+		case 'graph': return (e.kind === 'sensor' || e.kind === 'number') && typeof e.state === 'number';
+	}
+}
+
+/** Tailwind classes that give a designed card its place in the tile grid (a grid item). */
+export function span(size: CardSize | undefined): string {
+	return size === 'wide' ? 'sm:col-span-2' : size === 'large' ? 'sm:col-span-2 sm:row-span-2' : '';
+}

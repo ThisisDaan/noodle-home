@@ -2,7 +2,8 @@
 	import { api, formatState } from './api.ts';
 	import { live, type HistoryRow } from './live.svelte.ts';
 
-	let { device_id, key, title, hours = 24 }: { device_id: string; key: string; title?: string; hours?: number } = $props();
+	/** bare: no frame or padding, to sit inside a card. */
+	let { device_id, key, title, hours = 24, bare = false }: { device_id: string; key: string; title?: string; hours?: number; bare?: boolean } = $props();
 
 	type Point = { ts: number; value: number };
 	let points = $state<Point[]>([]);
@@ -56,7 +57,7 @@
 	});
 </script>
 
-<div class="bg-base-100 border-base-content/10 rounded-box border p-4">
+<div class={bare ? 'bg-base-content/5 rounded-box h-full p-2' : 'bg-base-100 border-base-content/10 rounded-box border p-4'}>
 	{#if !device || !entity}
 		<p class="text-sm opacity-60">{title ?? 'Sensor'}: this reading is not available ({device_id} · {key}).</p>
 	{:else}
@@ -65,7 +66,7 @@
 			<span class="text-2xl font-bold tabular-nums">{formatState(entity)}</span>
 		</div>
 		{#if path}
-			<svg viewBox="0 0 {W} {H}" class="text-primary mt-2 h-16 w-full" role="img" aria-label="Last {hours} hours">
+			<svg viewBox="0 0 {W} {H}" class="text-primary mt-2 w-full {bare ? 'h-[calc(100%-2.5rem)]' : 'h-16'}" preserveAspectRatio={bare ? 'none' : undefined} role="img" aria-label="Last {hours} hours">
 				<path d={path} fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
 			</svg>
 			<div class="flex justify-between text-xs opacity-50">

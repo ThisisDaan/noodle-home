@@ -139,3 +139,12 @@ def test_the_routes_need_login():
     client = TestClient(main.app)
     assert client.get("/api/custom").status_code == 401
     assert client.post("/api/custom", json={"name": "x"}).status_code == 401
+
+
+def test_number_fields_can_have_a_range_for_dials_and_sliders(adapter):
+    did = adapter.save("Study heater", [{"label": "Target", "type": "number", "unit": "°C", "min": 5, "max": 30, "step": 0.5}])["id"]
+    entity = adapter.hub.devices[f"custom:{did}"].entities["target"]
+    assert entity.attrs == {"min": 5, "max": 30, "step": 0.5}
+    for bad in ({"min": 10, "max": 5}, {"step": 0}, {"min": "low"}):
+        with pytest.raises(ValueError):
+            adapter.save("X", [{"label": "N", "type": "number", **bad}], did)

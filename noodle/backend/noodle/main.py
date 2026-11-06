@@ -436,6 +436,10 @@ def remove_area(name: str) -> list[str]:
 WIDGET_TYPES = {"status", "favourites", "rooms", "flows", "sensor"}
 DEFAULT_WIDGETS = [{"type": "status"}, {"type": "favourites"}, {"type": "rooms"}]
 DEVICE_GROUPS = {"room", "type", "source", "none"}
+# How a device's card is designed (see the frontend CardDesigner): a size with a grid of slots, and the components
+# placed in it. Small is 2 slots wide and 1 high, wide is 4x1, large is 4x3. A component fills w x h slots.
+CARD_SIZES = {"small": (2, 1), "wide": (4, 1), "large": (4, 3)}
+CARD_COMPONENTS = {"switch": (1, 1), "value": (1, 1), "dial": (2, 1), "slider": (2, 1), "graph": (2, 2)}
 DEVICE_SORTS = {"name", "recent"}
 
 
@@ -446,6 +450,38 @@ class LayoutBody(BaseModel):
     order: list[str] = Field(default_factory=list, max_length=1000)
     widgets: list[dict] | None = Field(default=None, max_length=50)
     devices_view: dict | None = None
+    cards: dict | None = None
+
+
+def _clean_cards(raw) -> dict:
+    """Keep the card designs that make sense: a known size, and components that fit inside it without overlapping."""
+    if not isinstance(raw, dict):
+        return {}
+    clean = {}
+    for device_id, design in list(raw.items())[:1000]:
+        if not isinstance(device_id, str) or not isinstance(design, dict) or design.get("size") not in CARD_SIZES:
+            continue
+        cols, rows = CARD_SIZES[design["size"]]
+        taken: set[tuple[int, int]] = set()
+        slots = []
+        for slot in design.get("slots") if isinstance(design.get("slots"), list) else []:
+            if not isinstance(slot, dict) or slot.get("component") not in CARD_COMPONENTS:
+                continue
+            at, key = slot.get("at"), slot.get("key")
+            if isinstance(at, bool) or not isinstance(at, int) or not isinstance(key, str) or not key:
+                continue
+            w, h = CARD_COMPONENTS[slot["component"]]
+            x, y = at % cols, at // cols
+            cells = {(x + i, y + j) for i in range(w) for j in range(h)}
+            if x + w > cols or y + h > rows or cells & taken:
+                continue
+            taken |= cells
+            item = {"at": at, "component": slot["component"], "key": key[:100]}
+            if isinstance(slot.get("label"), str) and slot["label"].strip():
+                item["label"] = slot["label"].strip()[:40]
+            slots.append(item)
+        clean[device_id[:100]] = {"size": design["size"], "slots": slots}
+    return clean
 
 
 def _clean_widgets(raw) -> list[dict] | None:
@@ -493,6 +529,7 @@ def _read_layout() -> dict:
             layout[key] = [str(item) for item in saved[key]]
     layout["widgets"] = _clean_widgets(saved.get("widgets"))
     layout["devices_view"] = _clean_devices_view(saved.get("devices_view"))
+    layout["cards"] = _clean_cards(saved.get("cards"))
     return layout
 
 
@@ -507,6 +544,8 @@ def put_layout(body: LayoutBody) -> dict:
     if body.widgets is not None:
         values["widgets"] = _clean_widgets(body.widgets) or []
     values["devices_view"] = _clean_devices_view(body.devices_view)
+    # A save that does not mention cards (a page that was open before they existed) keeps the ones there are.
+    values["cards"] = _clean_cards(body.cards if body.cards is not None else _read_layout()["cards"])
     dashboard.write(values)
     return _read_layout()
 

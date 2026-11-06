@@ -132,7 +132,7 @@
 {#if favorites.length}
 	<section class="mb-10">
 		<h2 class="mb-3 flex items-center gap-2 text-lg font-semibold"><Icon name="star" class="text-accent size-5 fill-current" />Favourites</h2>
-		<div class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3">
+		<div class="grid grid-flow-dense grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3">
 			{#each favorites as device, i (device.id)}
 				<DeviceCard {device} {editing} first={i === 0} last={i === favorites.length - 1}
 					onnudge={(d) => layout.nudge(device.id, d, favorites.map((x) => x.id))}
@@ -170,7 +170,7 @@
 		</div>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
-			class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3"
+			class="grid grid-flow-dense grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3"
 			class:min-h-28={editing}
 			ondragover={(e) => editing && e.preventDefault()}
 			ondrop={(e) => {
@@ -178,12 +178,10 @@
 			}}
 		>
 			{#each room.devices as device, i (device.id)}
-				<div class:opacity-40={layout.isHidden(device.id)}>
-					<DeviceCard {device} {editing} first={i === 0} last={i === room.devices.length - 1}
-						onnudge={(d) => layout.nudge(device.id, d, room.devices.map((x) => x.id))}
-						ondragstart={() => (dragId = device.id)}
-						ondrop={() => drop(room.area, device.id, room.devices)} />
-				</div>
+				<DeviceCard {device} {editing} dim={layout.isHidden(device.id)} first={i === 0} last={i === room.devices.length - 1}
+					onnudge={(d) => layout.nudge(device.id, d, room.devices.map((x) => x.id))}
+					ondragstart={() => (dragId = device.id)}
+					ondrop={() => drop(room.area, device.id, room.devices)} />
 			{:else}
 				<p class="text-sm opacity-60">Drop devices here.</p>
 			{/each}

@@ -31,7 +31,7 @@
 		error = '';
 		busy = true;
 		try {
-			const body = { name: c.name.trim(), fields: c.fields.filter((f) => f.label.trim()).map((f) => ({ ...f, label: f.label.trim(), unit: f.type === 'number' ? f.unit : undefined })) };
+			const body = { name: c.name.trim(), fields: c.fields.filter((f) => f.label.trim()).map((f) => ({ ...f, label: f.label.trim(), unit: f.type === 'number' ? f.unit : undefined, min: f.type === 'number' ? (f.min ?? undefined) : undefined, max: f.type === 'number' ? (f.max ?? undefined) : undefined, step: f.type === 'number' ? (f.step ?? undefined) : undefined })) };
 			await api(c.id ? `/custom/${c.id}` : '/custom', { method: c.id ? 'PUT' : 'POST', body });
 			customEditor.close();
 		} catch (err) {
@@ -81,7 +81,10 @@
 										{#each TYPES as [t, name] (t)}<option value={t}>{name}</option>{/each}
 									</select>
 									{#if f.type === 'number'}
-										<input class="input input-sm w-20" bind:value={f.unit} placeholder="Unit" maxlength="10" aria-label="Unit" />
+										<input class="input input-sm w-16" bind:value={f.unit} placeholder="Unit" maxlength="10" aria-label="Unit" />
+										<input type="number" step="any" class="input input-sm w-16" bind:value={f.min} placeholder="Low" aria-label="Lowest value" />
+										<input type="number" step="any" class="input input-sm w-16" bind:value={f.max} placeholder="High" aria-label="Highest value" />
+										<input type="number" step="any" min="0" class="input input-sm w-16" bind:value={f.step} placeholder="Step" aria-label="Step" />
 									{/if}
 									<button type="button" class="btn btn-ghost btn-xs btn-square text-error" aria-label="Remove field" onclick={() => removeField(f)}><Icon name="close" class="size-4" /></button>
 								</div>

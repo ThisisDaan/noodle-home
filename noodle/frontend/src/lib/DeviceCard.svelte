@@ -1,6 +1,8 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
+	import CardSlots from './devices/CardSlots.svelte';
 	import DeviceFace from './devices/DeviceFace.svelte';
+	import { span } from './devices/cardDesign.ts';
 	import TileSubtitle from './devices/TileSubtitle.svelte';
 	import { motionActive } from './devices/kinds.ts';
 	import { iconFor, isOn, type Device } from './api';
@@ -9,25 +11,31 @@
 	type Props = {
 		device: Device;
 		editing?: boolean;
+		/** Faded, e.g. a hidden device while editing the dashboard. */
+		dim?: boolean;
 		first?: boolean;
 		last?: boolean;
 		onnudge?: (delta: number) => void;
 		ondragstart?: () => void;
 		ondrop?: () => void;
 	};
-	let { device, editing = false, first = false, last = false, onnudge, ondragstart, ondrop }: Props = $props();
+	let { device, editing = false, dim = false, first = false, last = false, onnudge, ondragstart, ondrop }: Props = $props();
 
 	let dragging = $state(false);
 	let over = $state(false);
 	const lit = $derived(isOn(device) || motionActive(device));
+	// A designed card (devices/cardDesign.ts) has its own size and components; without one the device keeps its look.
+	const design = $derived(layout.cards[device.id]);
 </script>
 
 <!-- Every card has the same structure and height: the name with one line under it, and a bottom row (DeviceFace)
      that is always 3rem high. Battery and other properties are in the device's sheet, not here. -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-	class="tile group relative flex flex-col justify-between gap-3 p-3.5"
-	class:h-36={!editing}
+	class="tile group relative flex flex-col justify-between gap-3 p-3.5 {span(design?.size)}"
+	class:h-36={!editing && design?.size !== 'large'}
+	class:h-[18.75rem]={!editing && design?.size === 'large'}
+	class:opacity-40={dim}
 	class:is-on={lit}
 	class:is-dragging={dragging}
 	class:is-over={over}
@@ -71,7 +79,11 @@
 		{/if}
 	</div>
 
-	{#if !editing}<div class="relative z-10"><DeviceFace {device} size="tile" /></div>{/if}
+	{#if !editing}
+		<div class="relative z-10 {design?.size === 'large' ? 'flex min-h-0 grow flex-col' : ''}">
+			{#if design}<CardSlots {device} {design} />{:else}<DeviceFace {device} size="tile" />{/if}
+		</div>
+	{/if}
 
 	{#if editing}
 		<div class="border-base-content/10 relative z-10 flex items-center gap-1 border-t pt-2">

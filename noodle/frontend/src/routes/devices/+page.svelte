@@ -136,7 +136,7 @@
 				{g.title} <span class="badge badge-ghost badge-sm">{g.devices.length}</span>
 			</h2>
 		{/if}
-		<div class="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-3">
+		<div class="grid grid-flow-dense grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-3">
 			{#each g.devices as d (d.id)}{@render tile(d)}{/each}
 		</div>
 	</section>

@@ -1,6 +1,6 @@
 import { api } from './api';
 
-export type CustomField = { key?: string; label: string; type: 'switch' | 'number' | 'text'; unit?: string };
+export type CustomField = { key?: string; label: string; type: 'switch' | 'number' | 'text'; unit?: string; min?: number | null; max?: number | null; step?: number | null };
 export type CustomDevice = { id: string; name: string; fields: Required<Pick<CustomField, 'key'>> & CustomField[]; builtin: boolean };
 
 /** The custom device being created or edited in CustomDeviceDialog. */
