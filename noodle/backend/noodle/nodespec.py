@@ -28,10 +28,6 @@ CORE: dict[str, dict] = {
         "help": "Outputs 'cold' (at or below target - margin) and 'warm' (at or above target + margin), once per crossing. "
                 "Input 'check' re-reads the temperature now.",
         "fields": {**DEVICE, "target": ("num", "Target temperature in °C"), "margin": ("num", "Degrees either side of the target")}},
-    "trigger.control": {
-        "label": "Card control", "category": "trigger",
-        "help": "Fires when a control of this flow's card is used. Output 'out' carries the value; a switch also has 'on' and 'off'.",
-        "fields": {"control": ("str", "Id of the card control")}},
     "trigger.time": {
         "label": "Time of day", "category": "trigger", "help": "Fires every day (or on the given weekdays) at a time.",
         "fields": {"at": ("str", "Time as HH:MM"), "days": ("list", "Weekdays, Monday = 0; empty = every day")}},
@@ -63,9 +59,6 @@ CORE: dict[str, dict] = {
     "cond.var": {"label": "Check variable", "category": "condition", "help": "Yes when a variable equals / differs.",
                  "fields": {"name": ("str", "Variable name"), "op": ("str", "eq or neq", ["eq", "neq"]),
                             "value": ("any", "Value to compare with")}},
-    "cond.control": {"label": "Card control is...", "category": "condition",
-                     "help": "Yes when a control of this flow's card has the given value (a switch: on or off; no value means on).",
-                     "fields": {"control": ("str", "Id of the card control"), "value": ("any", "Value to compare with")}},
     "cond.day": {"label": "Day of the week", "category": "condition", "help": "Yes when today is one of the days.",
                  "fields": {"days": ("list", "Weekdays, Monday = 0")}},
     "cond.dark": {"label": "Is it dark?", "category": "condition", "help": "Yes between sunset and sunrise.", "fields": {}},

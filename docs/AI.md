@@ -52,10 +52,6 @@ The same information as the prompt is available from the API (log in first):
 | `POST /api/flow/validate` `{yaml}` | check text without saving |
 | `POST /api/flow/import` `{yaml, replace?}` | add a flow, switched off |
 
-## Cards
-
-A flow can also describe a card for the dashboard (controls such as a switch or a dial, and readings to show). The AI context explains the format, so you can ask for "a heater with a target dial on the dashboard". See the Cards section of the README.
-
 ## Rules the hub enforces
 
 - A flow that is new to the hub always starts **switched off**, whatever its file says.

@@ -1,12 +1,9 @@
 <script lang="ts">
 	import { api } from '../api.ts';
-	import NumberOrControl from './NumberOrControl.svelte';
-	import { live, type CardControl } from '../live.svelte.ts';
+	import { live } from '../live.svelte.ts';
 	import { accepts, DAY_NAMES, changeOptions, CYCLE_INPUTS, defaultChanges, pressOptions, DEFS, DEVICE_ACTIONS, actionsFor, deviceActionLabel, isNumeric } from './catalog.ts';
 
-	let { type, data, onchange, ondelete, onduplicate, onrun, controls = [] }: {
-		/** The controls of the flow's dashboard card, for the nodes that use one. */
-		controls?: CardControl[];
+	let { type, data, onchange, ondelete, onduplicate, onrun }: {
 		type: string;
 		data: Record<string, any>;
 		onchange: (data: Record<string, any>) => void;
@@ -173,8 +170,10 @@
 			A message's {'{count}'} is how many times it was pressed.</p>
 	{:else if type === 'trigger.thermostat'}
 		<div class="flex flex-wrap gap-2">
-			<NumberOrControl label="Target °C" value={data.target} {controls} step={0.5} fallback={20} onchange={(v) => set({ target: v })} />
-			<NumberOrControl label="Margin °C" value={data.margin} {controls} step={0.1} fallback={0.5} onchange={(v) => set({ margin: v })} />
+			<label class="floating-label grow"><span>Target °C</span>
+				<input type="number" step="0.5" class="input input-sm w-full" value={data.target} onchange={(e) => set({ target: Number(e.currentTarget.value) })} /></label>
+			<label class="floating-label grow"><span>Margin °C</span>
+				<input type="number" step="0.1" min="0" class="input input-sm w-full" value={data.margin} onchange={(e) => set({ margin: Number(e.currentTarget.value) })} /></label>
 		</div>
 		<ul class="list-disc pl-4 text-xs opacity-70">
 			<li><b>Too cold</b> fires once when it drops to {Number(data.target) - Number(data.margin)} °C or less.</li>
@@ -182,37 +181,6 @@
 			<li>In between nothing happens, so a heater does not keep switching on and off.</li>
 		</ul>
 		<p class="text-xs opacity-60">Use {'{temperature}'} in a notification to show the reading.</p>
-	{:else if type === 'trigger.control'}
-		<label class="floating-label"><span>Control on the card</span>
-			<select class="select select-sm w-full" value={data.control ?? ''} onchange={(e) => set({ control: e.currentTarget.value })}>
-				<option value="" disabled>Choose a control…</option>
-				{#each controls as c (c.id)}<option value={c.id}>{c.label ?? c.id}</option>{/each}
-			</select></label>
-		{#if !controls.length}<p class="text-xs opacity-60">This flow has no card yet. Use <b>Dashboard card</b> above the editor to add controls.</p>{/if}
-		<ul class="list-disc pl-4 text-xs opacity-70">
-			<li>A switch has <b>Switched on</b> and <b>Switched off</b>; every control also has <b>Used</b>, carrying its value.</li>
-		</ul>
-	{:else if type === 'cond.control'}
-		<label class="floating-label"><span>Control on the card</span>
-			<select class="select select-sm w-full" value={data.control ?? ''} onchange={(e) => set({ control: e.currentTarget.value, value: '' })}>
-				<option value="" disabled>Choose a control…</option>
-				{#each controls as c (c.id)}<option value={c.id}>{c.label ?? c.id}</option>{/each}
-			</select></label>
-		{#if controls.find((c) => c.id === data.control)?.type === 'select'}
-			<label class="floating-label"><span>Is</span>
-				<select class="select select-sm w-full" value={data.value ?? ''} onchange={(e) => set({ value: e.currentTarget.value })}>
-					{#each controls.find((c) => c.id === data.control)?.options ?? [] as o (o)}<option value={o}>{o}</option>{/each}
-				</select></label>
-		{:else if ['dial', 'slider'].includes(controls.find((c) => c.id === data.control)?.type ?? '')}
-			<label class="floating-label"><span>Is exactly</span>
-				<input type="number" step="any" class="input input-sm w-full" value={data.value} onchange={(e) => set({ value: Number(e.currentTarget.value) })} /></label>
-		{:else if controls.find((c) => c.id === data.control)?.type === 'switch'}
-			<label class="floating-label"><span>Is</span>
-				<select class="select select-sm w-full" value={data.value === 'off' ? 'off' : 'on'} onchange={(e) => set({ value: e.currentTarget.value })}>
-					<option value="on">On</option><option value="off">Off</option>
-				</select></label>
-		{/if}
-		<p class="text-xs opacity-60">Goes to <b>Yes</b> when the control has that value right now, otherwise <b>No</b>.</p>
 	{:else if type === 'trigger.time'}
 		<label class="floating-label"><span>Time</span>
 			<input type="time" class="input input-sm w-full" value={data.at} onchange={(e) => set({ at: e.currentTarget.value })} /></label>
@@ -328,7 +296,8 @@
 		<label class="floating-label"><span>Seconds</span>
 			<input type="number" min="0" class="input input-sm w-full" value={data.seconds} onchange={(e) => set({ seconds: Number(e.currentTarget.value) })} /></label>
 	{:else if type === 'action.timer'}
-		<NumberOrControl label="Minutes" value={data.minutes} {controls} step={0.5} fallback={5} onchange={(v) => set({ minutes: v })} />
+		<label class="floating-label"><span>Minutes</span>
+			<input type="number" min="0" step="0.5" class="input input-sm w-full" value={data.minutes} onchange={(e) => set({ minutes: Number(e.currentTarget.value) })} /></label>
 		<label class="flex items-center gap-2">
 			<input type="checkbox" class="checkbox checkbox-xs" checked={data.restart !== false} onchange={(e) => set({ restart: e.currentTarget.checked })} />
 			Start again while counting = begin from {data.minutes} min again

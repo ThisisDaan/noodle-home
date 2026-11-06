@@ -54,22 +54,6 @@ noodle schema      # JSON Schema of the format, with the nodes you have installe
 
 In Docker: `docker compose exec noodle python -m noodle validate`. `GET /api/flow/schema` serves the same schema; device ids for `device_id` come from `GET /api/devices`. Format and an example: `noodle/backend/noodle/flowfiles.py`. Letting an AI write flows is described in [docs/AI.md](docs/AI.md).
 
-## Cards: a flow with its own controls on the dashboard
-
-A flow can put a card on the dashboard, so one automation becomes something you can use: a heater with a switch and a
-target dial, a timer with a start button, a scene picker. The flow does the work; the card is only its face.
-
-- **Quick start**: Automations, New, **Heater with a dashboard card**. Pick a room sensor and a plug; the flow and the card are made for you.
-- **Your own**: open any flow and press **Dashboard card** above the editor. Add controls (switch, dial, slider, button, choice) and
-  what to show (a reading, a status line, a graph). Nothing to type but names and numbers.
-- **Use the controls in the flow**: a **Card control** step starts when a control is used (a switch has *Switched on* and *Switched off*);
-  **Card control is...** checks its value; and a number setting (a thermostat's target, a timer's minutes) can be set to *From <control>*
-  in its properties.
-- The card appears on the dashboard while the flow exists; its controls only work while the flow is switched on. New flows from
-  files or an AI start switched off, like always.
-
-(It is all stored in the flow's file, under `card:`, and an AI can write it too: see `noodle/backend/noodle/examples/flows/heater-card.yaml`.)
-
 ## Other config files
 
 Next to `flows/` in `<data>/config/`, all YAML, all editable by hand (the app picks up an edit within a couple of seconds and keeps your comments when it saves):

@@ -41,11 +41,7 @@ from .yamlfile import new_yaml, plain
 
 log = logging.getLogger(__name__)
 
-TOP_KEYS = {"id", "name", "description", "enabled", "nodes", "edges", "layout", "card"}
-CONTROL_TYPES = ("switch", "dial", "slider", "button", "select")
-SHOW_TYPES = ("value", "status", "graph")
-CONTROL_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
-CONTROL_REF_RE = re.compile(r"^\{control\.([a-z][a-z0-9_]*)\}$")
+TOP_KEYS = {"id", "name", "description", "enabled", "nodes", "edges", "layout"}
 EDGE_KEYS = {"from", "out", "to", "in", "id"}
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 SUFFIXES = (".yaml", ".yml")
@@ -98,11 +94,8 @@ def to_doc(flow: dict) -> dict:
         if e.get("id") and e["id"] != default_edge_id(e["source"], out, e["target"], to):
             edge["id"] = e["id"]
         edges.append(edge)
-    doc = {"id": flow["id"], "name": flow["name"], "enabled": bool(flow.get("enabled")),
-           "nodes": nodes, "edges": edges, "layout": layout}
-    if graph.get("card"):
-        doc["card"] = graph["card"]
-    return doc
+    return {"id": flow["id"], "name": flow["name"], "enabled": bool(flow.get("enabled")),
+            "nodes": nodes, "edges": edges, "layout": layout}
 
 
 def _auto_layout(nodes: list[str], edges: list[dict]) -> dict[str, list]:
@@ -138,10 +131,8 @@ def from_doc(doc: Mapping) -> dict:
         edges.append({"id": e.get("id") or default_edge_id(str(e["from"]), out, str(e["to"]), to),
                       "source": str(e["from"]), "sourceHandle": out, "target": str(e["to"]),
                       **({"targetHandle": to} if to else {})})
-    graph: dict[str, Any] = {"nodes": nodes, "edges": edges}
-    if doc.get("card"):
-        graph["card"] = doc["card"]
-    return {"id": str(doc["id"]), "name": doc["name"], "enabled": bool(doc.get("enabled", False)), "graph": graph}
+    return {"id": str(doc["id"]), "name": doc["name"], "enabled": bool(doc.get("enabled", False)),
+            "graph": {"nodes": nodes, "edges": edges}}
 
 
 def content_key(flow: dict) -> str:
@@ -162,8 +153,6 @@ def _fits(kind: str, value: Any) -> bool:
         return isinstance(value, (list, tuple))
     if isinstance(value, bool):
         return False
-    if isinstance(value, str) and CONTROL_REF_RE.match(value):  # "{control.target}": a control of the flow's card
-        return kind in ("num", "int")
     if isinstance(value, (int, float)):
         return kind == "num" or float(value).is_integer()
     try:  # the editor used to save some numbers as text
@@ -171,62 +160,6 @@ def _fits(kind: str, value: Any) -> bool:
         return isinstance(value, str)
     except (TypeError, ValueError):
         return False
-
-
-def _check_card(card: Any, errors: list[str], warnings: list[str]) -> set[str]:
-    """Check the card section; returns the ids of its controls."""
-    ids: set[str] = set()
-    if not isinstance(card, Mapping):
-        errors.append("card must be a mapping with a title, controls and show")
-        return ids
-    for key in card:
-        if key not in ("title", "controls", "show"):
-            errors.append(f"card: unknown key '{key}' (allowed: title, controls, show)")
-    if "title" in card and not isinstance(card["title"], str):
-        errors.append("card: title must be text")
-    controls = card.get("controls") or []
-    if not isinstance(controls, (list, tuple)):
-        errors.append("card: controls must be a list")
-        controls = []
-    for i, c in enumerate(controls, 1):
-        if not isinstance(c, Mapping) or not CONTROL_ID_RE.match(str(c.get("id", ""))):
-            errors.append(f"card control {i}: needs an id of lowercase letters, digits and '_' (starting with a letter)")
-            continue
-        if c["id"] in ids:
-            errors.append(f"card control {c['id']}: the id is used twice")
-        ids.add(c["id"])
-        if c.get("type") not in CONTROL_TYPES:
-            errors.append(f"card control {c['id']}: type must be one of {list(CONTROL_TYPES)}")
-            continue
-        for key in c:
-            if key not in ("id", "type", "label", "default", "min", "max", "step", "unit", "options"):
-                warnings.append(f"card control {c['id']}: '{key}' is not a setting of a control (ignored)")
-        if c["type"] in ("dial", "slider"):
-            for key in ("min", "max", "step", "default"):
-                if key in c and (isinstance(c[key], bool) or not isinstance(c[key], (int, float))):
-                    errors.append(f"card control {c['id']}: {key} must be a number")
-            if isinstance(c.get("min"), (int, float)) and isinstance(c.get("max"), (int, float)) and c["min"] >= c["max"]:
-                errors.append(f"card control {c['id']}: min must be below max")
-            if isinstance(c.get("step"), (int, float)) and not isinstance(c.get("step"), bool) and c["step"] <= 0:
-                errors.append(f"card control {c['id']}: step must be above 0")
-        if c["type"] == "select" and not (isinstance(c.get("options"), (list, tuple)) and c["options"]):
-            errors.append(f"card control {c['id']}: a select needs a list of options")
-    shows = card.get("show") or []
-    if not isinstance(shows, (list, tuple)):
-        errors.append("card: show must be a list")
-        shows = []
-    for i, s in enumerate(shows, 1):
-        if not isinstance(s, Mapping) or s.get("type") not in SHOW_TYPES:
-            errors.append(f"card show {i}: type must be one of {list(SHOW_TYPES)}")
-            continue
-        for key in s:
-            if key not in ("type", "label", "device_id", "key", "variable", "unit"):
-                warnings.append(f"card show {i}: '{key}' is not a setting (ignored)")
-        if s["type"] == "status" and not isinstance(s.get("variable"), str):
-            errors.append(f"card show {i}: a status needs a 'variable' (the one a Set variable step writes)")
-        if s["type"] in ("value", "graph") and not (isinstance(s.get("device_id"), str) and isinstance(s.get("key"), str)):
-            errors.append(f"card show {i}: a {s['type']} needs a device_id and a key")
-    return ids
 
 
 def validate(doc: Any) -> tuple[list[str], list[str]]:
@@ -270,16 +203,6 @@ def validate(doc: Any) -> tuple[list[str], list[str]]:
                 errors.append(f"node {nid}: {key} must be {'a number' if field[0] == 'num' else 'a whole number' if field[0] == 'int' else 'a ' + field[0].replace('str', 'text')}, got {value!r}")
             elif len(field) > 2 and value is not None and value not in field[2]:
                 errors.append(f"node {nid}: {key} must be one of {field[2]}, got {value!r}")
-    controls = _check_card(doc.get("card"), errors, warnings) if "card" in doc else set()
-    for nid, node in nodes.items():
-        if not isinstance(node, Mapping):
-            continue
-        if node.get("type") in ("trigger.control", "cond.control") and node.get("control") not in controls:
-            errors.append(f"node {nid}: control '{node.get('control')}' is not a control of the card")
-        for key, value in node.items():
-            match = CONTROL_REF_RE.match(value) if isinstance(value, str) else None
-            if match and match.group(1) not in controls:
-                errors.append(f"node {nid}: {key} uses control '{match.group(1)}', which the card does not have")
     edges = doc.get("edges", [])
     if not isinstance(edges, (list, tuple)):
         errors.append("edges must be a list")
@@ -344,25 +267,7 @@ def schema() -> dict:
                 "properties": {"from": {"type": "string"}, "out": {"type": "string", "default": "out"},
                                "to": {"type": "string"}, "in": {"type": "string"}, "id": {"type": "string"}}}},
             "layout": {"type": "object", "additionalProperties": {
-                "type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}},
-            "card": {
-                "type": "object", "additionalProperties": False,
-                "description": "A card on the dashboard: controls that start 'Card control' triggers (and can be used in "
-                               "node settings as \"{control.<id>}\"), and readings to show.",
-                "properties": {
-                    "title": {"type": "string"},
-                    "controls": {"type": "array", "items": {
-                        "type": "object", "required": ["id", "type"],
-                        "properties": {"id": {"type": "string", "pattern": CONTROL_ID_RE.pattern},
-                                       "type": {"enum": list(CONTROL_TYPES)}, "label": {"type": "string"},
-                                       "default": {}, "min": {"type": "number"}, "max": {"type": "number"},
-                                       "step": {"type": "number"}, "unit": {"type": "string"},
-                                       "options": {"type": "array", "items": {"type": "string"}}}}},
-                    "show": {"type": "array", "items": {
-                        "type": "object", "required": ["type"],
-                        "properties": {"type": {"enum": list(SHOW_TYPES)}, "label": {"type": "string"},
-                                       "device_id": {"type": "string"}, "key": {"type": "string"},
-                                       "variable": {"type": "string"}, "unit": {"type": "string"}}}}}}}}
+                "type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}}}}
 
 
 # --- files -----------------------------------------------------------------------------------------
@@ -468,11 +373,6 @@ class FlowFiles:
         doc["nodes"] = nodes
         doc["edges"] = CommentedSeq(_flow_map(e) for e in new["edges"])  # one line per edge
         doc["layout"] = CommentedMap({k: _flow_seq(v) for k, v in new["layout"].items()})
-        if "card" in new:
-            if _plain(doc.get("card")) != new["card"]:
-                doc["card"] = new["card"]
-        elif "card" in doc:
-            del doc["card"]
         self.dir.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + ".tmp")
         with tmp.open("w", encoding="utf-8", newline="\n") as f:

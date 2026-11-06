@@ -8,7 +8,7 @@ export type Template = {
 	title: string;
 	blurb: string;
 	picks: Pick[];
-	build: (p: Record<string, Chosen>) => { name: string; graph: { nodes: any[]; edges: any[]; card?: any } };
+	build: (p: Record<string, Chosen>) => { name: string; graph: { nodes: any[]; edges: any[] } };
 };
 
 const light: Pick['match'] = (e) => e.kind === 'light' || e.kind === 'switch';
@@ -25,63 +25,6 @@ const control = (id: string, p: Chosen, action: string, col: number, row = 0) =>
 	node(id, 'action.device', { device_id: p.device.id, key: p.entity.key, inputs: [action], brightness: 50, step: 5, min: 1 }, col, row);
 
 export const TEMPLATES: Template[] = [
-	{
-		id: 'heater',
-		title: 'Heater with a dashboard card',
-		blurb: 'A heater on a smart plug, kept at a temperature from a room sensor. The dashboard gets a Heating switch, a target dial and the room temperature, and the heater never runs more than 2 hours in a row.',
-		picks: [
-			{ id: 'sensor', label: 'Room temperature sensor', match: (e) => e.kind === 'sensor' && e.device_class === 'temperature' },
-			{ id: 'plug', label: 'Smart plug with the heater', match: (e) => e.kind === 'switch' }
-		],
-		build: ({ sensor, plug }) => {
-			const status = `heater-${Math.random().toString(36).slice(2, 6)}.status`;
-			const power = (id: string, action: 'on' | 'off', col: number, row: number) => control(id, plug, action, col, row);
-			return {
-				name: `${plug.device.name} (heater)`,
-				graph: {
-					card: {
-						title: plug.device.name,
-						controls: [
-							{ id: 'heat', type: 'switch', label: 'Heating', default: false },
-							{ id: 'target', type: 'dial', label: 'Target', min: 5, max: 30, step: 0.5, unit: '°C', default: 20 }
-						],
-						show: [
-							{ type: 'value', label: 'Room', device_id: sensor.device.id, key: sensor.entity.key },
-							{ type: 'status', label: 'State', variable: status }
-						]
-					},
-					nodes: [
-						node('temp', 'trigger.thermostat', { device_id: sensor.device.id, key: sensor.entity.key, target: '{control.target}', margin: 0.5 }, 0, 0),
-						node('allowed', 'cond.control', { control: 'heat', value: 'on' }, 1, 0),
-						power('on', 'on', 2, 0),
-						node('heating', 'action.var', { name: status, value: 'Heating' }, 3, 0),
-						power('off', 'off', 2, 1),
-						node('idle', 'action.var', { name: status, value: 'Idle' }, 3, 1),
-						node('switch', 'trigger.control', { control: 'heat' }, 0, 2),
-						power('switched_off', 'off', 1, 2),
-						node('is_off', 'action.var', { name: status, value: 'Off' }, 2, 2),
-						node('limit', 'action.timer', { minutes: 120, restart: false }, 3, 3),
-						power('limit_off', 'off', 4, 3),
-						node('limit_tell', 'action.notify', { title: 'Heating off', message: 'The heater was on for 2 hours straight and has been switched off.', priority: 'high', buttons: [] }, 5, 3)
-					],
-					edges: [
-						edge('temp', 'cold', 'allowed'),
-						edge('allowed', 'yes', 'on', 'on'),
-						edge('on', 'out', 'heating'),
-						edge('on', 'out', 'limit', 'start'),
-						edge('temp', 'warm', 'off', 'off'),
-						edge('off', 'out', 'idle'),
-						edge('off', 'out', 'limit', 'stop'),
-						edge('switch', 'off', 'switched_off', 'off'),
-						edge('switched_off', 'out', 'is_off'),
-						edge('switched_off', 'out', 'limit', 'stop'),
-						edge('limit', 'out', 'limit_off', 'off'),
-						edge('limit_off', 'out', 'limit_tell')
-					]
-				}
-			};
-		}
-	},
 	{
 		id: 'motion',
 		title: 'Motion light',

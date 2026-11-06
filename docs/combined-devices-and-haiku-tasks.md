@@ -1,7 +1,5 @@
 # Combined devices ("Combine") and a Haiku-ready task list
 
-> **Superseded (2026-11-06):** the preferred way to make something custom is now a flow with a `card:` on the dashboard (README, "Cards"). The Combine button is hidden; the `combined` plugin stays only so existing combined devices keep working, and can be removed once the Heater, Timer switch and Threshold sensor exist as example flows with cards (the heater one does: `examples/flows/heater-card.yaml`).
-
 Two parts: (A) the design for devices made from other devices, (B) the remaining refactor work cut into tasks small
 enough for a cheap model. Written 2026-11-06.
 

@@ -11,14 +11,12 @@
 	import { pluginNodes } from '#lib/flow/nodes.svelte.ts';
 	import FlowNode from '#lib/flow/FlowNode.svelte';
 	import WireEdge from '#lib/flow/WireEdge.svelte';
-	import CardEditor from '#lib/flow/CardEditor.svelte';
 	import NodeInspector from '#lib/flow/NodeInspector.svelte';
-	import type { FlowCardSpec } from '#lib/live.svelte.ts';
 	import { pick as picking } from '#lib/flow/pick.svelte.ts';
 	import { activity, applyActivity, resetActivity } from '#lib/flow/activity.svelte.ts';
 
 	type Flow = { id: string; name: string; enabled: boolean; last_run: number | null; last_error: string | null;
-		graph: { nodes: Node[]; edges: Edge[]; card?: FlowCardSpec | null } };
+		graph: { nodes: Node[]; edges: Edge[] } };
 	type LogLine = { time: number; message: string };
 
 	// Nodes that integrations add join the catalog once they are loaded.
@@ -34,12 +32,8 @@
 
 	let flow = $state<Flow | null>(null);
 	let name = $state('');
-	// The dashboard card of this flow (edited in CardEditor, saved with the flow).
-	let card = $state<FlowCardSpec | null>(null);
-	let cardOpen = $state(false);
 	let nodes = $state.raw<Node[]>([]);
 	let edges = $state.raw<Edge[]>([]);
-	const statusNames = $derived([...new Set(nodes.filter((n) => n.type === 'action.var').map((n) => String((n.data as Record<string, unknown>).name ?? '')).filter(Boolean))]);
 	let selectedId = $state<string | null>(null);
 
 	// Resting the pointer on a wire for half a second "focuses" it: the others fade, so it is easy to follow. Sweeping
@@ -94,14 +88,13 @@
 	};
 
 	const graph = () => ({
-		card: card ? $state.snapshot(card) : null,
 		nodes: nodes.map((n) => ({ id: n.id, type: n.type, position: n.position, data: n.data })),
 		edges: edges.map((e) => ({ id: e.id, source: e.source, sourceHandle: e.sourceHandle ?? 'out', target: e.target, ...(e.targetHandle ? { targetHandle: e.targetHandle } : {}) }))
 	});
 	/** What counts as a change: the name, nodes (with where they are), and connections. */
 	const fingerprint = () => {
 		const g = graph();
-		return JSON.stringify([name, g.card, g.nodes.map((n) => ({ ...n, position: { x: Math.round(n.position.x), y: Math.round(n.position.y) } })), g.edges]);
+		return JSON.stringify([name, g.nodes.map((n) => ({ ...n, position: { x: Math.round(n.position.x), y: Math.round(n.position.y) } })), g.edges]);
 	};
 	const dirty = $derived(flow !== null && fingerprint() !== saved);
 	const selected = $derived(nodes.find((n) => n.id === selectedId) ?? null);
@@ -112,7 +105,6 @@
 		flow = await api<Flow>(`/flows/${page.params.id}`);
 		if (!live.flows) api<typeof live.flows>('/flows').then((f) => (live.flows ??= f)).catch(() => {});
 		name = flow.name;
-		card = flow.graph.card ?? null;
 		nodes = flow.graph.nodes ?? [];
 		edges = (flow.graph.edges ?? []).map((e) => ({ ...e, type: 'wire', id: e.id ?? `${e.source}-${e.sourceHandle}-${e.target}` }));
 		saved = fingerprint();
@@ -544,16 +536,12 @@
 			{@render bar('view', 'View', viewMenu)}
 		</div>
 		<span class="ml-auto text-xs opacity-60 max-lg:hidden">Last run: {ago(flow.last_run)}</span>
-		<button class="btn btn-sm btn-ghost ml-2" onclick={() => (cardOpen = true)} title="Controls and readings for the dashboard">
-			<Icon name="dial" class="size-4" />Dashboard card{card ? ' ✓' : ''}
-		</button>
 		<label class="label mx-2 gap-2 text-sm">
 			<input type="checkbox" class="toggle toggle-primary toggle-sm" checked={flow.enabled} onchange={(e) => setEnabled(e.currentTarget.checked)} />
 			{flow.enabled ? 'On' : 'Off'}
 		</label>
 		<button class="btn btn-sm btn-primary" disabled={!dirty} onclick={save} title="Save (Ctrl+S)">{dirty ? 'Save' : 'Saved'}</button>
 	</div>
-	<CardEditor bind:card bind:open={cardOpen} {statusNames} />
 	{#if error || flow.last_error}<div role="alert" class="alert alert-error alert-soft mb-3 text-sm">{error || flow.last_error}</div>{/if}
 
 	<div class="flex min-h-0 grow gap-3">
@@ -592,7 +580,7 @@
 				<button class="btn btn-ghost btn-sm btn-circle absolute top-1 right-1 md:hidden" aria-label="Close"
 					onclick={() => { selectedId = null; showLog = false; }}><Icon name="close" class="size-5" /></button>
 				{#if selected}
-					<NodeInspector type={selected.type ?? ''} data={selected.data} controls={card?.controls ?? []} onchange={updateData} ondelete={deleteSelected} onduplicate={duplicate}
+					<NodeInspector type={selected.type ?? ''} data={selected.data} onchange={updateData} ondelete={deleteSelected} onduplicate={duplicate}
 						onrun={DEFS[selected.type ?? '']?.category === 'trigger' ? runFrom : undefined} />
 				{/if}
 				{#if showLog}

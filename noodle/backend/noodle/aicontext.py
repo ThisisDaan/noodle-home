@@ -24,14 +24,6 @@ Rules
 - Outputs: trigger.state has one output per ticked change, named "<entity key>:on", "<entity key>:off" or
   "<entity key>:out" (numbers); trigger.event one per ticked press "<button key>:<press>"; cond.* nodes have
   "yes"/"no" (on/off entities "on"/"off"); everything else "out".
-- A flow can put a card on the dashboard with a top-level `card:` section: {title, controls: [{id, type, label,
-  ...}], show: [...]}. Control types: switch, dial and slider (min, max, step, unit, default), button, select
-  (options). Show items: {type: value, device_id, key, label}, {type: status, variable, label} (a variable that an
-  action.var step writes) and {type: graph, device_id, key}. A control starts a trigger.control node with
-  data {control: <id>} (outputs "on"/"off" for a switch, "out" with the value for all); a numeric setting of any
-  node (thermostat target and margin, timer minutes) may be "{control.<id>}" to use the control's value; a
-  cond.control {control, value} checks one ("on"/"off" for a switch). Use a card when the request
-  wants something to look at or adjust on the dashboard; see the heater-card example.
 - Always write `enabled: false`. A person switches a flow on after reading it.
 - Keep it simple and add a short comment above each step saying what it does. Prefer an action.timer or
   cond.for over polling (use action.timer for any wait, never action.delay: it is lost on a restart), and add a safety net (for example a timer that switches a heater off) when the
