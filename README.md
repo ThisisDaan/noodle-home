@@ -79,7 +79,7 @@ large), tap a slot and choose a component and which field it uses:
 | Slider | 1 | a number, or a light's brightness |
 | Graph | 2 x 2 | the last hours of a number |
 
-A device that nobody designed shows its own look, and the designer opens on exactly that look, written in the same slots and components, so you always start from what you see. The designs are kept in `dashboard.yaml` under `cards`.
+Every card is made of these components, a designed one and a device's own look alike (a light is a power button and a brightness bar, a plug a power button and its power draw, a sensor its readings), so the designer always opens on exactly what is on the card and you change it from there. Only a remote's buttons have a look of their own that is not made of components yet. The designs are kept in `dashboard.yaml` under `cards`.
 
 ## Other config files
 

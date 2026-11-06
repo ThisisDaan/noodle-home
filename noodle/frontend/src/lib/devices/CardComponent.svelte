@@ -1,10 +1,16 @@
 <script lang="ts">
-	import { command, formatState, type Device } from '../api.ts';
+	import { command, formatState, isOn, type Device } from '../api.ts';
+	import Icon from '../Icon.svelte';
 	import SensorWidget from '../SensorWidget.svelte';
 	import type { CardSlot } from './cardDesign.ts';
+	import { isContact, isMotion, isPower } from './kinds.ts';
+	import PowerButton from './PowerButton.svelte';
 
-	/** One component of a designed card, tied to one field of the device. */
-	let { device, slot }: { device: Device; slot: CardSlot } = $props();
+	/** One component of a card, tied to one field of the device. Every card is made of these, a device's own look
+	 * as much as a designed one; they are drawn like the tiles always were (a round power button, a bar that fills,
+	 * a tinted status bar, a big reading). `labelled`: show the field's name (cards somebody designed; the
+	 * standard looks do not need it). */
+	let { device, slot, labelled = false }: { device: Device; slot: CardSlot; labelled?: boolean } = $props();
 
 	const entity = $derived(device.entities.find((e) => e.key === slot.key));
 	const name = $derived(slot.label || entity?.name || slot.key);
@@ -21,50 +27,96 @@
 		}
 	}
 
-	// dial and slider: a number with a range and a step (from the field, else 0..100 in steps of 1)
-	const num = $derived(typeof entity?.state === 'number' ? entity.state : entity?.kind === 'light' ? (entity.brightness ?? 0) : null);
+	// a number with a range and a step (from the field; a light's brightness is 1..100)
+	const light = $derived(entity?.kind === 'light');
+	const num = $derived(typeof entity?.state === 'number' ? entity.state : light ? (entity?.state === true ? (entity.brightness ?? 100) : 0) : null);
 	const step = $derived(Number(entity?.attrs?.step ?? 1) || 1);
-	const low = $derived(Number(entity?.attrs?.min ?? (entity?.kind === 'light' ? 1 : 0)));
+	const low = $derived(Number(entity?.attrs?.min ?? 0));
 	const high = $derived(Number(entity?.attrs?.max ?? 100));
-	// Quick taps on + and −: count from the value we just asked for, not the one the server has confirmed so far.
+	// Quick taps and drags: show what was asked for until the server has confirmed it.
 	let wanted = $state<number | null>(null);
+	let settle: ReturnType<typeof setTimeout> | undefined;
+	function want(value: number | null) {
+		wanted = value;
+		clearTimeout(settle);
+		if (value !== null) settle = setTimeout(() => (wanted = null), 1500);
+	}
 	async function nudge(direction: 1 | -1) {
 		const next = Math.round(Math.min(entity?.attrs?.max ?? Infinity, Math.max(entity?.attrs?.min ?? -Infinity, (wanted ?? num ?? 0) + direction * step)) * 1000) / 1000;
-		wanted = next;
+		want(next);
 		await send({ value: next });
-		setTimeout(() => (wanted = null), 400);
+	}
+	async function setLevel(value: number) {
+		want(value);
+		if (light) await send(value > 0 ? { brightness: value } : { on: false });
+		else await send({ value });
 	}
 	const shown = (n: number | null) => (n === null ? '–' : String(Math.round(n * 100) / 100));
 	const unit = $derived(entity?.unit ? ` ${entity.unit}` : '');
+	const level = $derived(wanted ?? num ?? low);
+	const fill = $derived(Math.max(0, Math.min(100, ((level - low) / (high - low || 1)) * 100)));
+
+	// what a value looks like: a status bar for motion and doors, a bar for power, a big reading for the rest
+	const look = $derived(!entity ? 'reading' : isMotion(entity) || isContact(entity) ? 'status' : isPower(entity) || ['switch', 'fan', 'light'].includes(entity.kind) ? 'bar' : 'reading');
+	const text = $derived(entity ? formatState(entity) : '–');
+	const active = $derived(entity?.state === true && device.available);
 </script>
 
 {#if !entity}
-	<div class="bg-base-content/5 rounded-box flex h-full items-center justify-center px-2 text-center text-xs opacity-60" title="This field is gone from the device">–</div>
+	<div class="bg-base-content/5 rounded-box grid h-full place-items-center px-2 text-center text-xs opacity-60" title="This field is gone from the device">–</div>
 {:else if slot.component === 'switch'}
-	<button type="button" class="rounded-box flex h-full w-full min-w-0 flex-col items-start justify-center px-3 text-left transition active:brightness-90 {entity.state === true ? 'bg-warning/60 text-warning-content' : 'bg-base-content/10'}"
-		aria-pressed={entity.state === true} disabled={!usable} onclick={() => send({ toggle: true })}>
-		<span class="w-full truncate text-xs opacity-80">{name}</span>
-		<span class="font-bold">{entity.state === true ? 'On' : 'Off'}</span>
-	</button>
-{:else if slot.component === 'value'}
-	<div class="bg-base-content/5 rounded-box flex h-full min-w-0 flex-col justify-center px-3" class:opacity-50={!device.available}>
-		<span class="truncate text-xs opacity-70">{name}</span>
-		<span class="truncate font-bold tabular-nums" class:text-xl={formatState(entity).length < 8} class:text-sm={formatState(entity).length >= 8}>{formatState(entity)}</span>
+	<div class="flex h-full min-w-0 items-center gap-2">
+		<PowerButton on={entity.state === true} label={name} disabled={!usable} onclick={() => send({ toggle: true })} />
+		{#if labelled || slot.label}<span class="min-w-0 truncate text-sm font-medium">{name}</span>{/if}
 	</div>
+{:else if slot.component === 'value'}
+	{#if look === 'bar'}
+		<div class="bg-base-content/10 rounded-box relative h-full min-w-0 overflow-hidden" class:opacity-50={!device.available}>
+			<span class="bg-warning/50 absolute inset-0 transition-opacity" class:opacity-0={!isOn(device)}></span>
+			<span class="absolute inset-0 grid place-items-center px-2 font-bold tabular-nums">{labelled ? `${name} ` : ''}{text}</span>
+		</div>
+	{:else if look === 'status'}
+		<div class="rounded-box flex h-full min-w-0 items-center gap-3 px-4 transition-colors {active ? (isMotion(entity) ? 'bg-success/20 text-success' : 'bg-warning/20 text-warning') : 'bg-base-content/5'}"
+			class:opacity-50={!device.available}>
+			{#if isMotion(entity)}
+				<span class="relative grid size-3 place-items-center">
+					{#if active}<span class="bg-success absolute inline-flex size-5 animate-ping rounded-full opacity-40"></span>{/if}
+					<span class="relative size-3 rounded-full {active ? 'bg-success' : 'bg-base-content/30'}"></span>
+				</span>
+			{:else}
+				<Icon name="door" class="size-5 shrink-0 {active ? '' : 'opacity-40'}" />
+			{/if}
+			<span class="truncate font-semibold">{labelled ? `${name}: ` : ''}{text}</span>
+		</div>
+	{:else}
+		<div class="flex h-full min-w-0 flex-col justify-end" class:opacity-50={!device.available || entity.state == null}>
+			{#if labelled}<span class="truncate text-xs opacity-70">{name}</span>{/if}
+			{#if typeof entity.state === 'number'}
+				<span class="truncate leading-none font-bold tracking-tight tabular-nums text-4xl">{shown(entity.state)}<span class="ml-0.5 text-xl font-medium opacity-60">{entity.unit ?? ''}</span></span>
+			{:else}
+				<span class="truncate leading-tight font-bold {text.length < 10 ? 'text-2xl' : 'text-base'}">{text}</span>
+			{/if}
+		</div>
+	{/if}
 {:else if slot.component === 'dial'}
-	<div class="bg-base-content/5 rounded-box flex h-full min-w-0 items-center gap-1 px-1.5">
+	<div class="bg-base-content/10 rounded-box flex h-full min-w-0 items-center gap-1 px-1.5">
 		<button type="button" class="btn btn-circle btn-sm btn-ghost" aria-label="{name}: lower" disabled={!usable} onclick={() => nudge(-1)}>−</button>
 		<div class="flex min-w-0 grow flex-col items-center leading-tight">
-			<span class="w-full truncate text-center text-xs opacity-70">{name}</span>
+			{#if labelled}<span class="w-full truncate text-center text-xs opacity-70">{name}</span>{/if}
 			<span class="font-bold tabular-nums">{shown(wanted ?? num)}{unit}</span>
 		</div>
 		<button type="button" class="btn btn-circle btn-sm btn-ghost" aria-label="{name}: raise" disabled={!usable} onclick={() => nudge(1)}>+</button>
 	</div>
 {:else if slot.component === 'slider'}
-	<div class="bg-base-content/5 rounded-box flex h-full min-w-0 flex-col justify-center gap-0.5 px-3">
-		<div class="flex items-baseline justify-between gap-2 text-xs"><span class="truncate opacity-70">{name}</span><span class="font-bold tabular-nums">{shown(num)}{unit}</span></div>
-		<input type="range" class="range range-primary range-xs w-full" min={low} max={high} {step} value={num ?? low} disabled={!usable}
-			aria-label={name} onchange={(e) => send(entity.kind === 'light' ? { brightness: Number(e.currentTarget.value) } : { value: Number(e.currentTarget.value) })} />
+	<div class="bg-base-content/10 rounded-box relative h-full min-w-0 overflow-hidden" class:opacity-50={!device.available}>
+		<div class="{light ? 'bg-warning/50' : 'bg-primary/50'} absolute inset-y-0 left-0" style="width: {fill}%"></div>
+		<input type="range" min={low} max={high} {step} value={level} aria-label={name} disabled={!usable && !wanted}
+			class="absolute inset-0 size-full cursor-pointer opacity-0"
+			oninput={(e) => want(Number(e.currentTarget.value))}
+			onchange={(e) => setLevel(Number(e.currentTarget.value))} />
+		<span class="pointer-events-none absolute inset-0 grid place-items-center px-2 font-bold tabular-nums">
+			{#if light}{level > 0 ? `${shown(level)}%` : 'Off'}{:else}{labelled ? `${name} ` : ''}{shown(level)}{unit}{/if}
+		</span>
 	</div>
 {:else if slot.component === 'graph'}
 	<div class="h-full min-h-0 overflow-hidden"><SensorWidget device_id={device.id} key={slot.key} title={slot.label} hours={6} bare /></div>

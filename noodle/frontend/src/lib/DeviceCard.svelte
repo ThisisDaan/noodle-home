@@ -2,7 +2,7 @@
 	import Icon from './Icon.svelte';
 	import CardSlots from './devices/CardSlots.svelte';
 	import DeviceFace from './devices/DeviceFace.svelte';
-	import { span } from './devices/cardDesign.ts';
+	import { defaultDesign, span } from './devices/cardDesign.ts';
 	import TileSubtitle from './devices/TileSubtitle.svelte';
 	import { motionActive } from './devices/kinds.ts';
 	import { iconFor, isOn, type Device } from './api';
@@ -24,8 +24,10 @@
 	let dragging = $state(false);
 	let over = $state(false);
 	const lit = $derived(isOn(device) || motionActive(device));
-	// A designed card (devices/cardDesign.ts) has its own size and components; without one the device keeps its look.
-	const design = $derived(layout.cards[device.id]);
+	// Every card is made of components (devices/cardDesign.ts): the saved design, else the device's own look written
+	// as one. Only a remote's buttons have no such look yet and keep DeviceFace.
+	const saved = $derived(layout.cards[device.id]);
+	const design = $derived(saved ?? defaultDesign(device));
 </script>
 
 <!-- Every card has the same structure and height: the name with one line under it, and a bottom row (DeviceFace)
@@ -81,7 +83,7 @@
 
 	{#if !editing}
 		<div class="relative z-10 {design?.size === 'large' ? 'flex min-h-0 grow flex-col' : ''}">
-			{#if design}<CardSlots {device} {design} />{:else}<DeviceFace {device} size="tile" />{/if}
+			{#if design}<CardSlots {device} {design} labelled={!!saved} />{:else}<DeviceFace {device} size="tile" />{/if}
 		</div>
 	{/if}
 

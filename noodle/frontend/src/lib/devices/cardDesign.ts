@@ -27,6 +27,20 @@ export const COMPONENTS: Record<CardComponentType, { w: number; h: number; label
 
 export const slotCount = (size: CardSize) => SIZES[size].cols * SIZES[size].rows;
 
+/** The widths of a card's columns: a round power button stays as wide as it is, a column nothing is in gives its
+ * room to the others, the rest share what is left. */
+export function columns(design: CardDesign, labelled: boolean): string {
+	const { cols } = SIZES[design.size];
+	return Array.from({ length: cols }, (_, x) => {
+		const here = design.slots.filter((s) => {
+			const c = cells(design.size, s.at, s.component);
+			return c?.some((i) => i % cols === x);
+		});
+		if (!here.length) return '0fr';
+		return here.every((s) => s.component === 'switch' && !s.label && !labelled) ? '3rem' : 'minmax(0, 1fr)';
+	}).join(' ');
+}
+
 /** The slot numbers a component at `at` covers, or null when it would stick out of the card. */
 export function cells(size: CardSize, at: number, component: CardComponentType): number[] | null {
 	const { cols, rows } = SIZES[size];
@@ -72,11 +86,13 @@ export function defaultDesign(device: Device): CardDesign | null {
 			const light = device.entities.find((e) => e.kind === 'light');
 			add('switch', light?.key);
 			if (light && light.brightness !== null && light.brightness !== undefined) add('slider', light.key);
+			else add('value', light?.key); // not dimmable: a bar that says On or Off
 			break;
 		}
 		case 'switch':
-			add('switch', device.entities.find((e) => e.kind === 'switch' || e.kind === 'fan')?.key);
-			add('value', device.entities.find(isPower)?.key);
+			const sw = device.entities.find((e) => e.kind === 'switch' || e.kind === 'fan');
+			add('switch', sw?.key);
+			add('value', device.entities.find(isPower)?.key ?? sw?.key); // the power it draws, else On or Off
 			break;
 		case 'thermostat':
 			add('dial', device.entities.find((e) => e.kind === 'climate')?.key);
