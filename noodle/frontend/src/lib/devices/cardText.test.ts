@@ -70,3 +70,10 @@ test('old rules become a template that does the same', () => {
 	expect(resolve(plain, device(false, 15), 0).text).toBe('Cool');
 	expect(resolve(plain, device(false, 30), 0).text).toBe('Off');
 });
+
+test('fields by key, by device.key and by the name as shown', () => {
+	expect(run('{if device.motion == true}Y{:else}N{/if}').text).toBe('Y');
+	expect(run('{device.temperature} / {device.temp} / {temperature}').text).toBe('21 °C / 21 °C / 21 °C');
+	expect(run('{if device.temperature > 20}Warm{/if}').text).toBe('Warm');
+	expect(run('{device.name}').text).toBe('Hall');
+});

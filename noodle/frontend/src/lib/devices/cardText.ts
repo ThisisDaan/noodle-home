@@ -39,9 +39,19 @@ export const TOKENS = [
 	{ token: '{seen:ago}', label: 'Last seen (5m ago)' },
 	{ token: '{seen:clock}', label: 'Last seen (clock time)' }
 ];
-const RESERVED = ['value', 'name', 'unit', 'device', 'changed', 'seen', 'field', 'if', 'else', 'color', 'icon', 'hide', 'true', 'false', 'and', 'or', 'not', 'is'];
-/** How a field is written in a template: its key, or {field:key} when the key is also a word of the language. */
-export const fieldToken = (key: string) => (RESERVED.includes(key) || !/^[A-Za-z_][\w.-]*$/.test(key) ? `{field:${key}}` : `{${key}}`);
+const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+/** A field of the device by the name a template uses: `occupancy` or `device.occupancy`, either the key or the name as shown. */
+export function findField(device: Device, ref: string): Entity | undefined {
+	const n = ref.replace(/^device\./, '');
+	return device.entities.find((x) => x.key === n) ?? device.entities.find((x) => slug(x.name) === slug(n));
+}
+/** How the designer writes a field: `device.occupancy` from its name, or from its key when two fields read alike. */
+export function fieldName(device: Device, f: Pick<Entity, 'key' | 'name'>): string {
+	const s = slug(f.name);
+	const clash = !s || s === 'name' || device.entities.filter((x) => slug(x.name) === s).length > 1;
+	return `device.${clash ? f.key : s}`;
+}
+export const fieldToken = (device: Device, f: Pick<Entity, 'key' | 'name'>) => `{${fieldName(device, f)}}`;
 
 // ---- the template language -------------------------------------------------------------------------------------
 // Text with {values} in it, and blocks:   {if motion == true} Motion {:else if temp > 20} Warm {:else} Quiet {/if}
@@ -182,13 +192,13 @@ export type Rendered = { text: string; color?: CardColor; icon?: string; hide: b
 /** The template with the device's values in it. */
 export function renderTemplate(template: string, device: Device, e: Entity | undefined, slot: CardSlot, now: number): Rendered {
 	const { nodes, error } = parseTemplate(template);
-	const field = (k: string) => device.entities.find((x) => x.key === k);
+	const field = (k: string) => findField(device, k);
 	const shown = (f: Entity) => valueText(f, f.key === e?.key ? slot : {});
 	const get = (name: string): Val => {
 		if (name === 'value') return e?.state ?? undefined;
 		if (name === 'name') return slot.label || e?.name || '';
 		if (name === 'unit') return unitOf(e, slot);
-		if (name === 'device') return device.name;
+		if (name === 'device' || name === 'device.name') return device.name;
 		return field(name)?.state ?? undefined;
 	};
 	function out(s: string): string | null {
@@ -197,7 +207,7 @@ export function renderTemplate(template: string, device: Device, e: Entity | und
 			case 'value': return valueText(e, { ...slot, unit: '' }).trim();
 			case 'name': return slot.label || e?.name || '';
 			case 'unit': return unitOf(e, slot);
-			case 'device': return device.name;
+			case 'device': case 'device.name': return device.name;
 			case 'changed': return timeText(e?.changed, arg ?? 'ago', now);
 			case 'seen': return timeText(device.last_seen, arg ?? 'ago', now);
 			case 'field': { const f = field(arg ?? ''); return f ? shown(f) : null; }
@@ -247,8 +257,8 @@ export function rulesToTemplate(slot: CardSlot, device: Device): string {
 	const lit = (v: string | number) => (typeof v === 'number' || /^-?\d+(\.\d+)?$/.test(v) ? String(v) : `'${String(v).replace(/'/g, '')}'`);
 	const parts = (slot.rules ?? []).map((r, i) => {
 		const key = r.field || slot.key;
-		const f = device.entities.find((x) => x.key === key);
-		const name = fieldToken(key).replace(/^\{|\}$/g, '').replace(/^field:/, '') || key;
+		const f = findField(device, key);
+		const name = f ? fieldName(device, f) : `device.${key}`;
 		const bool = typeof f?.state === 'boolean';
 		const v = bool ? (YES.includes(word(r.value)) ? 'true' : 'false') : lit(r.value);
 		const c = r.op === 'is' ? `${name} == ${v}` : r.op === 'not' ? `${name} != ${v}` : r.op === 'above' ? `${name} > ${v}` : r.op === 'below' ? `${name} < ${v}` : `${name} >= ${v} and ${name} <= ${r.value2 ?? 0}`;

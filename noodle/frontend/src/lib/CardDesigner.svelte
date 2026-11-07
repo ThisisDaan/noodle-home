@@ -7,7 +7,7 @@
 		COLORS, COMPONENTS, HOURS, ICONS, MAX_H, MAX_W, PRESETS, STYLES, autoStyle, compatible, defaultDesign, freeSpot, grid, hoursLabel, minSize,
 		placeable, presetFields, startSize, stylesFor, type CardColor, type CardDesign, type CardSlot, type CardStyle
 	} from './devices/cardDesign.ts';
-	import { TOKENS, fieldToken, resolve, rulesToTemplate } from './devices/cardText.ts';
+	import { TOKENS, fieldName as refName, fieldToken, resolve, rulesToTemplate } from './devices/cardText.ts';
 	import { motionActive } from './devices/kinds.ts';
 	import { cardDesigner } from './designer.svelte';
 	import { layout } from './layout.svelte';
@@ -103,7 +103,7 @@
 	/** an if / else block for a field, ready to fill in */
 	function ifBlock(key: string): string {
 		const f = device?.entities.find((x) => x.key === key);
-		const name = fieldToken(key).replace(/^\{|\}$/g, '');
+		const name = f ? refName(device!, f) : key;
 		const cond = typeof f?.state === 'boolean' ? `${name} == true` : typeof f?.state === 'number' ? `${name} > 0` : `${name} == 'text'`;
 		return `{if ${cond}}\nYes\n{:else}\nNo\n{/if}`;
 	}
@@ -322,7 +322,7 @@
 											<select class="select select-xs w-full" value="" onchange={(e) => { insert(e.currentTarget.value); e.currentTarget.value = ''; }} aria-label="Insert a value">
 												<option value="">Insert a value…</option>
 												<optgroup label="This component">{#each TOKENS as t (t.token)}<option value={t.token}>{t.label}</option>{/each}</optgroup>
-												<optgroup label="Fields of the device">{#each device.entities as f (f.key)}<option value={fieldToken(f.key)}>{f.name}</option>{/each}</optgroup>
+												<optgroup label="Fields of the device">{#each device.entities as f (f.key)}<option value={fieldToken(device, f)}>{f.name}</option>{/each}</optgroup>
 											</select>
 											<select class="select select-xs w-full" value="" onchange={(e) => { const v = e.currentTarget.value; insert(v.startsWith('if:') ? ifBlock(v.slice(3)) : v); e.currentTarget.value = ''; }} aria-label="Insert a block">
 												<option value="">Insert a block…</option>
@@ -334,14 +334,14 @@
 										</div>
 										<details class="font-normal opacity-80">
 											<summary class="cursor-pointer">How to write it</summary>
-											<pre class="bg-base-200 rounded-box mt-1 p-2 text-[11px] leading-snug whitespace-pre-wrap">{`{if motion == true}
+											<pre class="bg-base-200 rounded-box mt-1 p-2 text-[11px] leading-snug whitespace-pre-wrap">{`{if device.motion == true}
   {color warning}Motion detected
-{:else if temp > 25}
-  Warm: {temp}
+{:else if device.temp > 25}
+  Warm: {device.temp}
 {:else}
   No motion
 {/if}`}</pre>
-											<p class="mt-1">Values in braces: <code>{'{value}'}</code>, <code>{'{name}'}</code> or a field's key. Conditions: == != &gt; &lt; &gt;= &lt;= and or not. Style a block with <code>{'{color …}'}</code> (primary, success, warning, error, info…), <code>{'{icon …}'}</code> or <code>{'{hide}'}</code>.</p>
+											<p class="mt-1">Values in braces: <code>{'{value}'}</code> (this component's field), <code>{'{device.name}'}</code> or any field of the device, like <code>{'{device.occupancy}'}</code>. Conditions: == != &gt; &lt; &gt;= &lt;= and or not. Style a block with <code>{'{color …}'}</code> (primary, success, warning, error, info…), <code>{'{icon …}'}</code> or <code>{'{hide}'}</code>.</p>
 										</details>
 									</div>
 									{#if sel.rules?.length}
