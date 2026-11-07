@@ -4,9 +4,10 @@
 	import CardBody from './devices/CardBody.svelte';
 	import TileSubtitle from './devices/TileSubtitle.svelte';
 	import {
-		COMPONENTS, HOURS, MAX_H, MAX_W, PRESETS, STYLES, autoStyle, compatible, defaultDesign, freeSpot, grid, hoursLabel, minSize,
-		placeable, presetFields, startSize, stylesFor, type CardDesign, type CardSlot, type CardStyle
+		COLORS, COMPONENTS, HOURS, ICONS, MAX_H, MAX_W, PRESETS, STYLES, autoStyle, compatible, defaultDesign, freeSpot, grid, hoursLabel, minSize,
+		placeable, presetFields, startSize, stylesFor, type CardColor, type CardDesign, type CardRule, type CardSlot, type CardStyle
 	} from './devices/cardDesign.ts';
+	import { TOKENS, resolve } from './devices/cardText.ts';
 	import { motionActive } from './devices/kinds.ts';
 	import { cardDesigner } from './designer.svelte';
 	import { layout } from './layout.svelte';
@@ -44,7 +45,10 @@
 	const sel = $derived(selected !== null ? draft.slots[selected] : undefined);
 	const entity = $derived(sel ? device?.entities.find((e) => e.key === sel.key) : undefined);
 	const fields = $derived(sel && device ? device.entities.filter((e) => compatible(sel.component, e)) : []);
-	const styles = $derived(entity ? stylesFor(entity) : []);
+	const styles = $derived<CardStyle[]>(entity ? stylesFor(entity) : sel?.component === 'text' ? ['text-s', 'text-m', 'text-l', 'chip'] : []);
+	let tab = $state<'content' | 'format' | 'rules'>('content');
+	/** the rule that applies to the selected component right now (it is highlighted in the Rules list) */
+	const matched = $derived(sel && device ? resolve(sel, device, Date.now()).rule : -1);
 	const cardPx = $derived({ w: draft.w * CELL_W + (draft.w - 1) * GAP, h: draft.h * CELL_H + (draft.h - 1) * GAP });
 	const fieldName = (k: string) => device?.entities.find((e) => e.key === k)?.name ?? k;
 
@@ -52,7 +56,7 @@
 	function add(p: (typeof PRESETS)[number]) {
 		if (!device) return;
 		const choices = presetFields(device, p);
-		if (!choices.length) return;
+		if (!choices.length && p.component !== 'text') return;
 		const used = new Set(draft.slots.map((s) => s.key));
 		const e = choices.find((c) => !used.has(c.key)) ?? choices[0];
 		const want = startSize(p.component, p.style);
@@ -61,7 +65,7 @@
 			for (let h = want.h; h >= 1; h--) {
 				const at = freeSpot(draft, w, h);
 				if (!at) continue;
-				draft.slots.push({ ...at, w, h, component: p.component, key: e.key, ...(p.style ? { style: p.style } : {}) });
+				draft.slots.push({ ...at, w, h, component: p.component, key: e?.key ?? '', ...(p.style ? { style: p.style } : {}) });
 				selected = draft.slots.length - 1;
 				note = '';
 				return;
@@ -85,6 +89,27 @@
 	}
 	function patch(p: Partial<CardSlot>) {
 		if (selected !== null && sel) draft.slots[selected] = { ...sel, ...p };
+	}
+	function insert(token: string) {
+		if (token && sel) patch({ template: (sel.template ?? '') + token });
+	}
+	function setRule(i: number, p: Partial<CardRule>) {
+		if (sel) patch({ rules: (sel.rules ?? []).map((r, j) => (j === i ? { ...r, ...p } : r)) });
+	}
+	function setThen(i: number, p: Partial<CardRule['then']>) {
+		if (sel) patch({ rules: (sel.rules ?? []).map((r, j) => (j === i ? { ...r, then: { ...r.then, ...p } } : r)) });
+	}
+	/** a starting comparison for a field: yes/no, a number, or text */
+	function firstRule(key: string): Pick<CardRule, 'op' | 'value' | 'value2'> {
+		const state = device?.entities.find((f) => f.key === key)?.state;
+		return typeof state === 'boolean' ? { op: 'is', value: 'on' } : typeof state === 'number' ? { op: 'above', value: 0 } : { op: 'is', value: '' };
+	}
+	const resetValue = (key: string) => ({ ...firstRule(key), value2: undefined });
+	function addRule() {
+		if (sel) patch({ rules: [...(sel.rules ?? []), { ...firstRule(sel.key), then: { color: 'success' } }] });
+	}
+	function removeRule(i: number) {
+		if (sel) patch({ rules: (sel.rules ?? []).filter((_, j) => j !== i) });
 	}
 	function remove() {
 		if (selected === null) return;
@@ -251,39 +276,139 @@
 						<h3 class="text-sm font-semibold">Add to the card</h3>
 						<div class="grid grid-cols-3 gap-2">
 							{#each PRESETS as p (p.id)}
-								<button class="btn btn-sm btn-soft" disabled={!presetFields(device, p).length} onclick={() => add(p)}>{p.label}</button>
+								<button class="btn btn-sm btn-soft" disabled={p.component !== 'text' && !presetFields(device, p).length} onclick={() => add(p)}>{p.label}</button>
 							{/each}
 						</div>
 						<p class="min-h-8 text-xs opacity-70" role="status">{note}</p>
 					</section>
 
-					<section class="flex min-h-64 flex-col gap-3">
+<section class="flex min-h-72 flex-col gap-3">
 						<h3 class="text-sm font-semibold">{sel ? (sel.component === 'value' ? 'Reading' : COMPONENTS[sel.component].label) : 'Selected'}</h3>
-						{#if sel && entity}
-							<label class="flex flex-col gap-1 text-xs font-medium opacity-80">Shows
-								<select class="select select-sm w-full" value={sel.key} onchange={(e) => setField(e.currentTarget.value)}>
-									{#each fields as f (f.key)}<option value={f.key}>{f.name}</option>{/each}
-								</select>
-							</label>
-							{#if sel.component === 'value'}
-								<div class="flex flex-col gap-1 text-xs font-medium opacity-80">Looks like
-									<div class="grid grid-cols-2 gap-1.5">
-										{#each styles as s (s)}
-											<button class="btn btn-xs" class:btn-primary={sel.style === s} onclick={() => setStyle(s)}>{STYLES[s].label}</button>
-										{/each}
-									</div>
-								</div>
-								{#if sel.style && STYLES[sel.style].graph}
-									<label class="flex flex-col gap-1 text-xs font-medium opacity-80">History
-										<select class="select select-sm w-full" value={sel.hours ?? 6} onchange={(e) => patch({ hours: Number(e.currentTarget.value) })}>
-											{#each HOURS as h (h)}<option value={h}>Last {hoursLabel(h)}</option>{/each}
+						{#if sel && (entity || sel.component === 'text')}
+							<div class="tabs tabs-box tabs-sm" role="tablist">
+								{#each [['content', 'Content'], ['format', 'Format'], ['rules', `Rules${sel.rules?.length ? ` (${sel.rules.length})` : ''}`]] as [id, label] (id)}
+									<button role="tab" class="tab" class:tab-active={tab === id} onclick={() => (tab = id as typeof tab)}>{label}</button>
+								{/each}
+							</div>
+
+							{#if tab === 'content'}
+								{#if sel.component !== 'text'}
+									<label class="flex flex-col gap-1 text-xs font-medium opacity-80">Shows
+										<select class="select select-sm w-full" value={sel.key} onchange={(e) => setField(e.currentTarget.value)}>
+											{#each fields as f (f.key)}<option value={f.key}>{f.name}</option>{/each}
 										</select>
 									</label>
 								{/if}
+								{#if sel.component === 'value' || sel.component === 'text'}
+									<div class="flex flex-col gap-1 text-xs font-medium opacity-80">Looks like
+										<div class="grid grid-cols-2 gap-1.5">
+											{#each styles as s (s)}
+												<button class="btn btn-xs" class:btn-primary={sel.style === s} onclick={() => setStyle(s)}>{STYLES[s].label}</button>
+											{/each}
+										</div>
+									</div>
+									{#if sel.style && STYLES[sel.style].graph}
+										<label class="flex flex-col gap-1 text-xs font-medium opacity-80">History
+											<select class="select select-sm w-full" value={sel.hours ?? 6} onchange={(e) => patch({ hours: Number(e.currentTarget.value) })}>
+												{#each HOURS as h (h)}<option value={h}>Last {hoursLabel(h)}</option>{/each}
+											</select>
+										</label>
+									{/if}
+									<div class="flex flex-col gap-1 text-xs font-medium opacity-80">Text
+										<input class="input input-sm w-full" value={sel.template ?? ''} placeholder={sel.component === 'text' ? 'Type your text' : 'As the device says it'} maxlength="200"
+											oninput={(e) => patch({ template: e.currentTarget.value || undefined })} />
+										<select class="select select-xs w-full" value="" onchange={(e) => { insert(e.currentTarget.value); e.currentTarget.value = ''; }} aria-label="Insert a value into the text">
+											<option value="">Insert a value…</option>
+											{#each TOKENS as t (t.token)}<option value={t.token}>{t.label}</option>{/each}
+											{#each device.entities as f (f.key)}<option value={`{field:${f.key}}`}>{f.name} (field)</option>{/each}
+										</select>
+									</div>
+								{/if}
+								<label class="flex flex-col gap-1 text-xs font-medium opacity-80">Name on the card
+									<input class="input input-sm w-full" value={sel.label ?? ''} placeholder={entity?.name ?? ''} maxlength="40" oninput={(e) => setLabel(e.currentTarget.value)} />
+								</label>
+							{:else if tab === 'format'}
+								{#if entity && typeof entity.state === 'number'}
+									<div class="flex flex-col gap-2 text-xs font-medium opacity-80">Number
+										<div class="grid grid-cols-2 gap-2">
+											<select class="select select-sm w-full" value={sel.decimals ?? ''} aria-label="Decimals" onchange={(e) => patch({ decimals: e.currentTarget.value === '' ? undefined : Number(e.currentTarget.value) })}>
+												<option value="">Decimals: auto</option>
+												{#each [0, 1, 2, 3, 4] as d (d)}<option value={d}>{d} decimals</option>{/each}
+											</select>
+											<input class="input input-sm w-full" value={sel.unit ?? ''} placeholder={entity.unit ? `Unit: ${entity.unit}` : 'Unit'} maxlength="10" aria-label="Unit"
+												oninput={(e) => patch({ unit: e.currentTarget.value === '' ? undefined : e.currentTarget.value })} />
+										</div>
+										<label class="flex items-center gap-2 font-normal"><input type="checkbox" class="checkbox checkbox-sm" checked={!!sel.thousands} onchange={(e) => patch({ thousands: e.currentTarget.checked || undefined })} />Thousands separator</label>
+									</div>
+								{/if}
+								<div class="flex flex-col gap-2 text-xs font-medium opacity-80">Text
+									<div class="flex flex-wrap items-center gap-2">
+										<button class="btn btn-xs" class:btn-primary={sel.bold} aria-pressed={!!sel.bold} onclick={() => patch({ bold: sel.bold ? undefined : true })}><b>B</b></button>
+										<div class="join">
+											{#each ['left', 'center', 'right'] as a (a)}
+												<button class="btn btn-xs join-item" class:btn-primary={(sel.align ?? 'left') === a} onclick={() => patch({ align: a === 'left' ? undefined : (a as 'center' | 'right') })}>{a}</button>
+											{/each}
+										</div>
+									</div>
+									<div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Colour">
+										<button class="btn btn-xs btn-circle btn-outline" class:btn-active={!sel.color} aria-label="No colour" onclick={() => patch({ color: undefined })}><Icon name="close" class="size-3" /></button>
+										{#each Object.keys(COLORS) as c (c)}
+											<button class="size-6 rounded-full border-2 {COLORS[c as CardColor].dot} {sel.color === c ? 'border-base-content' : 'border-transparent'}" aria-label={c} aria-pressed={sel.color === c} onclick={() => patch({ color: c as CardColor })}></button>
+										{/each}
+									</div>
+								</div>
+							{:else}
+								<p class="text-xs opacity-70">First rule that is true wins. It can change the text, colour and icon, or hide the component.</p>
+								{#each sel.rules ?? [] as r, i (i)}
+									{@const target = device.entities.find((f) => f.key === (r.field || sel.key))}
+									{@const kind = typeof target?.state === 'boolean' ? 'bool' : typeof target?.state === 'number' ? 'num' : 'text'}
+									<div class="bg-base-200 rounded-box flex flex-col gap-2 p-2.5 {matched === i ? 'ring-primary ring-1' : ''}">
+										<div class="flex items-center gap-1.5 text-xs">
+											<span class="font-semibold">When</span>
+											<select class="select select-xs min-w-0 grow" value={r.field ?? ''} aria-label="Field" onchange={(e) => setRule(i, { field: e.currentTarget.value || undefined, ...resetValue(e.currentTarget.value || sel.key) })}>
+												{#if sel.key}<option value="">{entity?.name ?? 'this field'}</option>{/if}
+												{#each device.entities.filter((f) => f.key !== sel.key) as f (f.key)}<option value={f.key}>{f.name}</option>{/each}
+											</select>
+											<button class="btn btn-ghost btn-xs btn-square" aria-label="Remove rule" onclick={() => removeRule(i)}><Icon name="close" class="size-3.5" /></button>
+										</div>
+										<div class="flex items-center gap-1.5">
+											<select class="select select-xs w-24 shrink-0" value={r.op} aria-label="Comparison" onchange={(e) => setRule(i, { op: e.currentTarget.value as CardRule['op'] })}>
+												<option value="is">is</option>
+												<option value="not">is not</option>
+												{#if kind === 'num'}<option value="above">above</option><option value="below">below</option><option value="between">between</option>{/if}
+											</select>
+											{#if kind === 'bool'}
+												<select class="select select-xs min-w-0 grow" value={String(r.value)} aria-label="Value" onchange={(e) => setRule(i, { value: e.currentTarget.value })}>
+													<option value="on">On / yes</option><option value="off">Off / no</option>
+												</select>
+											{:else if kind === 'num'}
+												<input type="number" class="input input-xs min-w-0 grow" value={r.value} aria-label="Value" oninput={(e) => setRule(i, { value: Number(e.currentTarget.value) })} />
+												{#if r.op === 'between'}<span class="text-xs">and</span>
+													<input type="number" class="input input-xs min-w-0 grow" value={r.value2 ?? 0} aria-label="Upper value" oninput={(e) => setRule(i, { value2: Number(e.currentTarget.value) })} />{/if}
+											{:else}
+												<input class="input input-xs min-w-0 grow" value={r.value} aria-label="Value" maxlength="100" oninput={(e) => setRule(i, { value: e.currentTarget.value })} />
+											{/if}
+										</div>
+										<span class="text-xs font-semibold">Then</span>
+										<input class="input input-xs w-full" value={r.then.text ?? ''} placeholder="Show this text (optional)" maxlength="200" aria-label="Text"
+											oninput={(e) => setThen(i, { text: e.currentTarget.value === '' ? undefined : e.currentTarget.value })} />
+										<div class="flex items-center gap-1.5">
+											<select class="select select-xs min-w-0 grow" value={r.then.color ?? ''} aria-label="Colour" onchange={(e) => setThen(i, { color: (e.currentTarget.value || undefined) as CardColor | undefined })}>
+												<option value="">Colour: as is</option>
+												{#each Object.keys(COLORS) as c (c)}<option value={c}>{c}</option>{/each}
+											</select>
+											<select class="select select-xs min-w-0 grow" value={r.then.icon ?? ''} aria-label="Icon" onchange={(e) => setThen(i, { icon: e.currentTarget.value || undefined })}>
+												<option value="">Icon: as is</option>
+												{#each ICONS as ic (ic)}<option value={ic}>{ic}</option>{/each}
+											</select>
+										</div>
+										<label class="flex items-center gap-2 text-xs"><input type="checkbox" class="checkbox checkbox-xs" checked={!!r.then.hide} onchange={(e) => setThen(i, { hide: e.currentTarget.checked || undefined })} />Hide the component</label>
+									</div>
+								{/each}
+								{#if (sel.rules?.length ?? 0) < 8}
+									<button class="btn btn-sm btn-soft" onclick={addRule}><Icon name="plus" class="size-4" />Add a rule</button>
+								{/if}
 							{/if}
-							<label class="flex flex-col gap-1 text-xs font-medium opacity-80">Name on the card
-								<input class="input input-sm w-full" value={sel.label ?? ''} placeholder={fieldName(sel.key)} maxlength="40" oninput={(e) => setLabel(e.currentTarget.value)} />
-							</label>
 							<button class="btn btn-sm btn-error btn-outline mt-auto" onclick={remove}><Icon name="close" class="size-4" />Remove</button>
 						{:else}
 							<p class="text-sm opacity-60">Tap a component on the card to change what it shows and how. Drag it to move it, drag its edges to resize it. Arrow keys nudge it, Delete removes it.</p>

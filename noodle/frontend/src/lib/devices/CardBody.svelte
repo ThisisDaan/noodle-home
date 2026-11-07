@@ -30,7 +30,7 @@
 	{/if}
 	{#each design.slots as slot, i (i)}
 		<div class="relative min-w-0" style={place(slot)}>
-			<div class="size-full {editor ? 'pointer-events-none select-none' : ''}" inert={!!editor}><CardComponent {device} {slot} {labelled} /></div>
+			<div class="size-full {editor ? 'pointer-events-none select-none' : ''}" inert={!!editor}><CardComponent {device} {slot} {labelled} preview={!!editor} /></div>
 			{#if editor}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div data-slot class="absolute inset-0 cursor-move touch-none rounded-lg {editor.selected === i ? 'outline-primary bg-primary/10 outline-2' : 'hover:outline-primary/40 hover:outline-2'}"

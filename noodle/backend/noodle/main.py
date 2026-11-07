@@ -441,7 +441,15 @@ DEVICE_GROUPS = {"room", "type", "source", "none"}
 # and a display style. (frontend devices/cardDesign.ts must say the same.)
 CARD_MAX = (4, 4)
 CARD_PER_CELL = (4, 2)
-CARD_COMPONENTS = {"switch", "value", "dial", "slider"}
+CARD_COMPONENTS = {"switch", "value", "dial", "slider", "text"}  # text: a label that needs no field
+# Text, format and rules of a component (frontend devices/cardText.ts): a text template with {tokens}, number format,
+# text style, and "when field <op> value then text / colour / icon / hide" rules (first match wins).
+CARD_COLORS = {"primary", "secondary", "accent", "success", "warning", "error", "info", "neutral"}
+CARD_ICONS = {"bulb", "plug", "thermo", "motion", "door", "gauge", "star", "eye", "eyeoff", "check", "close", "battery", "wifi",
+              "power", "clock", "bell", "bolt", "home", "pause"}
+CARD_OPS = {"is", "not", "above", "below", "between"}
+CARD_ALIGN = {"left", "center", "right"}
+CARD_MAX_RULES = 8
 CARD_STYLES = {"text-s", "text-m", "text-l", "chip", "icon", "gauge", "bar", "line", "bars", "spark"}
 CARD_HOURS = {1, 6, 24, 72, 168}
 # The first card designs: a size name and slots by number. Still read (once), and written the new way.
@@ -485,6 +493,40 @@ def _upgrade_card(design: dict) -> dict:
     return {"w": w, "h": h, "slots": slots}
 
 
+def _clean_rules(raw) -> list[dict]:
+    """The if/then rules of one component that make sense: a known comparison, and a result that does something."""
+    rules = []
+    for rule in raw[:CARD_MAX_RULES] if isinstance(raw, list) else []:
+        then = rule.get("then") if isinstance(rule, dict) else None
+        if not isinstance(then, dict) or rule.get("op") not in CARD_OPS:
+            continue
+        value = rule.get("value")
+        number = isinstance(value, (int, float)) and not isinstance(value, bool)
+        if not (number or isinstance(value, str)):
+            continue
+        result = {}
+        if isinstance(then.get("text"), str):
+            result["text"] = then["text"][:200]
+        if then.get("color") in CARD_COLORS:
+            result["color"] = then["color"]
+        if then.get("icon") in CARD_ICONS:
+            result["icon"] = then["icon"]
+        if then.get("hide") is True:
+            result["hide"] = True
+        if not result:
+            continue
+        item = {"op": rule["op"], "value": value if number else value[:100], "then": result}
+        if isinstance(rule.get("field"), str) and rule["field"]:
+            item["field"] = rule["field"][:100]
+        v2 = rule.get("value2")
+        if rule["op"] == "between":
+            if not (isinstance(v2, (int, float)) and not isinstance(v2, bool)):
+                continue
+            item["value2"] = v2
+        rules.append(item)
+    return rules
+
+
 def _clean_cards(raw) -> dict:
     """Keep the card designs that make sense: a size in cells, and components that sit inside the card's grid
     without overlapping. Designs of the first version are upgraded on the way."""
@@ -508,16 +550,35 @@ def _clean_cards(raw) -> dict:
             if not isinstance(slot, dict) or slot.get("component") not in CARD_COMPONENTS:
                 continue
             key = slot.get("key")
+            if slot["component"] == "text" and key is None:
+                key = ""  # a label has no field
             x, y, w, h = (slot.get(k) for k in ("x", "y", "w", "h"))
-            if not isinstance(key, str) or not key or not (whole(x, 0, cols - 1) and whole(y, 0, rows - 1) and whole(w, 1, cols) and whole(h, 1, rows)):
+            if not isinstance(key, str) or (not key and slot["component"] != "text") or not (whole(x, 0, cols - 1) and whole(y, 0, rows - 1) and whole(w, 1, cols) and whole(h, 1, rows)):
                 continue
             cells = {(x + i, y + j) for i in range(w) for j in range(h)}
             if x + w > cols or y + h > rows or cells & taken:
                 continue
             taken |= cells
             item = {"x": x, "y": y, "w": w, "h": h, "component": slot["component"], "key": key[:100]}
-            if slot["component"] == "value" and slot.get("style") in CARD_STYLES:
+            if slot["component"] in ("value", "text") and slot.get("style") in CARD_STYLES:
                 item["style"] = slot["style"]
+            if isinstance(slot.get("template"), str) and slot["template"]:
+                item["template"] = slot["template"][:200]
+            decimals = slot.get("decimals")
+            if whole(decimals, 0, 6):
+                item["decimals"] = decimals
+            if isinstance(slot.get("unit"), str):
+                item["unit"] = slot["unit"][:10]
+            for flag in ("thousands", "bold"):
+                if slot.get(flag) is True:
+                    item[flag] = True
+            if slot.get("align") in CARD_ALIGN:
+                item["align"] = slot["align"]
+            if slot.get("color") in CARD_COLORS:
+                item["color"] = slot["color"]
+            rules = _clean_rules(slot.get("rules"))
+            if rules:
+                item["rules"] = rules
             if slot.get("hours") in CARD_HOURS and not isinstance(slot.get("hours"), bool):
                 item["hours"] = slot["hours"]
             if isinstance(slot.get("label"), str) and slot["label"].strip():

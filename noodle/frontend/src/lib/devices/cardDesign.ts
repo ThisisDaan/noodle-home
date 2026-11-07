@@ -4,9 +4,25 @@ import { contactEntity, deviceKind, isContact, isHumidity, isMotion, isPower, is
 /** How a device's card is designed: a size in dashboard cells (w x h) and components placed anywhere on the card's
  * fine grid, each with its own position, size and display style. Stored in the dashboard layout (backend main.py
  * CARD_* must say the same). A remote's buttons have their own look (DeviceFace) and no design. */
-export type CardComponentType = 'switch' | 'value' | 'dial' | 'slider';
+export type CardComponentType = 'switch' | 'value' | 'dial' | 'slider' | 'text';
 export type CardStyle = 'text-s' | 'text-m' | 'text-l' | 'chip' | 'icon' | 'gauge' | 'bar' | 'line' | 'bars' | 'spark';
-export type CardSlot = { x: number; y: number; w: number; h: number; component: CardComponentType; key: string; style?: CardStyle; label?: string; hours?: number };
+export type CardColor = 'primary' | 'secondary' | 'accent' | 'success' | 'warning' | 'error' | 'info' | 'neutral';
+export type RuleOp = 'is' | 'not' | 'above' | 'below' | 'between';
+/** When `field` (default: the component's own) <op> value, then the component shows this instead; first match wins. */
+export type CardRule = { field?: string; op: RuleOp; value: string | number; value2?: number; then: { text?: string; color?: CardColor; icon?: string; hide?: boolean } };
+export type CardSlot = {
+	x: number; y: number; w: number; h: number; component: CardComponentType;
+	/** the device's field ('' for a label) */
+	key: string;
+	style?: CardStyle; label?: string; hours?: number;
+	/** the text, with {tokens} (see cardText.ts); without one the component shows its field as it always did */
+	template?: string;
+	/** number format */
+	decimals?: number; unit?: string; thousands?: boolean;
+	/** text style */
+	bold?: boolean; align?: 'left' | 'center' | 'right'; color?: CardColor;
+	rules?: CardRule[];
+};
 export type CardDesign = { w: number; h: number; slots: CardSlot[] };
 
 /** Fine grid cells per dashboard cell, and the biggest card. */
@@ -20,7 +36,8 @@ export const COMPONENTS: Record<CardComponentType, { label: string; hint: string
 	switch: { label: 'Switch', hint: 'Tap to turn on or off', w: 1, h: 2 },
 	value: { label: 'Reading', hint: 'Shows a value', w: 2, h: 2 },
 	dial: { label: 'Dial', hint: 'Plus and minus for a number', w: 3, h: 2 },
-	slider: { label: 'Slider', hint: 'Drag to set a number or brightness', w: 3, h: 2 }
+	slider: { label: 'Slider', hint: 'Drag to set a number or brightness', w: 3, h: 2 },
+	text: { label: 'Label', hint: 'Text you write, with values from the device in it', w: 3, h: 1 }
 };
 
 /** The ways a reading can be shown. `numeric`: only for a number. */
@@ -58,26 +75,43 @@ export function compatible(component: CardComponentType, e: Entity): boolean {
 		case 'value': return e.kind !== 'button';
 		case 'dial': return e.kind === 'number' || e.kind === 'climate';
 		case 'slider': return e.kind === 'number' || (e.kind === 'light' && e.brightness !== null);
+		case 'text': return false;
 	}
 }
 
 /** What the editor offers to add: a component, and for a reading the style it starts in. */
 export const PRESETS: { id: string; label: string; component: CardComponentType; style?: CardStyle }[] = [
-	{ id: 'text', label: 'Text', component: 'value', style: 'text-l' },
+	{ id: 'text', label: 'Value', component: 'value', style: 'text-l' },
 	{ id: 'graph', label: 'Graph', component: 'value', style: 'line' },
 	{ id: 'gauge', label: 'Gauge', component: 'value', style: 'gauge' },
 	{ id: 'status', label: 'Status', component: 'value', style: 'chip' },
+	{ id: 'label', label: 'Label', component: 'text', style: 'text-m' },
 	{ id: 'switch', label: 'Switch', component: 'switch' },
 	{ id: 'slider', label: 'Slider', component: 'slider' },
 	{ id: 'dial', label: 'Dial', component: 'dial' }
 ];
 /** Whether a preset has a field to work with on this device (a graph needs a number, a status bar does not). */
 export function presetFields(device: Device, p: (typeof PRESETS)[number]): Entity[] {
+	if (p.component === 'text') return [];
 	return device.entities.filter((e) => compatible(p.component, e) && (!p.style || stylesFor(e).includes(p.style)));
 }
 
 /** The size a new component starts with. */
 export const startSize = (component: CardComponentType, style?: CardStyle) => (component === 'value' && style ? STYLES[style] : COMPONENTS[component]);
+
+/** The colours a component or a rule can take, as tailwind classes (written out so they are not purged). */
+export const COLORS: Record<CardColor, { text: string; tint: string; dot: string }> = {
+	primary: { text: 'text-primary', tint: 'bg-primary/20 text-primary', dot: 'bg-primary' },
+	secondary: { text: 'text-secondary', tint: 'bg-secondary/20 text-secondary', dot: 'bg-secondary' },
+	accent: { text: 'text-accent', tint: 'bg-accent/20 text-accent', dot: 'bg-accent' },
+	success: { text: 'text-success', tint: 'bg-success/20 text-success', dot: 'bg-success' },
+	warning: { text: 'text-warning', tint: 'bg-warning/20 text-warning', dot: 'bg-warning' },
+	error: { text: 'text-error', tint: 'bg-error/20 text-error', dot: 'bg-error' },
+	info: { text: 'text-info', tint: 'bg-info/20 text-info', dot: 'bg-info' },
+	neutral: { text: 'text-base-content', tint: 'bg-base-content/10', dot: 'bg-base-content/50' }
+};
+/** Icons a rule can show (backend CARD_ICONS). */
+export const ICONS = ['bulb', 'plug', 'thermo', 'motion', 'door', 'gauge', 'star', 'eye', 'eyeoff', 'check', 'close', 'battery', 'wifi', 'power', 'clock', 'bell', 'bolt', 'home', 'pause'];
 
 const overlap = (a: CardSlot, b: CardSlot) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 

@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { formatState, type Device, type Entity } from '../api.ts';
+	import type { Device, Entity } from '../api.ts';
 	import { History } from '../history.svelte.ts';
+	import { valueText } from './cardText.ts';
 	import type { CardSlot } from './cardDesign.ts';
 
 	/** A card component that draws the last hours of a number: a line, bars (the average of each stretch of time)
 	 * or a small sparkline next to the current value. It fills the box it is given. */
-	let { device, entity, slot, name, labelled = false }: { device: Device; entity: Entity; slot: CardSlot; name: string; labelled?: boolean } = $props();
+	let { device, entity, slot, name, labelled = false, text: custom }: { device: Device; entity: Entity; slot: CardSlot; name: string; labelled?: boolean; text?: string } = $props();
 
 	const hours = $derived(slot.hours ?? 6);
 	const history = new History(() => ({ device_id: device.id, key: slot.key, hours }));
@@ -36,7 +37,7 @@
 		const lo = Math.min(0, range.min);
 		return sums.map((b) => (b.n ? ((b.sum / b.n - lo) / (range.max - lo || 1)) * (H - PAD) : 0));
 	});
-	const text = $derived(formatState(entity));
+	const text = $derived(custom ?? valueText(entity, slot));
 </script>
 
 <div class="bg-base-content/5 rounded-box relative flex h-full min-h-0 min-w-0 overflow-hidden" class:opacity-50={!device.available}>

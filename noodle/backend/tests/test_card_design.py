@@ -65,3 +65,28 @@ def test_a_layout_save_without_cards_keeps_the_cards(monkeypatch, tmp_path):
     assert again["cards"]["d1"]["w"] == 1 and again["rooms"] == ["Study"]
     removed = main.put_layout(main.LayoutBody(cards={}))
     assert removed["cards"] == {}
+
+
+def test_text_format_and_rules_are_kept_when_they_make_sense():
+    rules = [
+        {"field": "presence", "op": "is", "value": "on", "then": {"text": "Home", "color": "success", "icon": "home"}},
+        {"op": "between", "value": 10, "value2": 20, "then": {"hide": True}},
+        {"op": "between", "value": 10, "then": {"hide": True}},         # no upper end
+        {"op": "above", "value": 5, "then": {"color": "neon"}},         # does nothing
+        {"op": "sorta", "value": 1, "then": {"text": "x"}},             # unknown comparison
+        {"op": "is", "value": True, "then": {"text": "x"}},             # a bool is not a value
+    ]
+    design = {"d": {"w": 2, "h": 2, "slots": [
+        slot(0, 0, 4, 2, key="temp", template=" {value} in {device}", decimals=1, unit="°", thousands=True, bold=True, align="right",
+             color="info", rules=rules),
+        slot(4, 0, 4, 2, "text", None, template="Hello", style="text-m"),   # a label needs no field
+        slot(0, 2, 1, 1, "value", None)]}}                                   # a reading does
+    clean = main._clean_cards(design)["d"]["slots"]
+    assert len(clean) == 2
+    first = clean[0]
+    assert first["template"] == " {value} in {device}" and first["decimals"] == 1 and first["unit"] == "°"
+    assert first["thousands"] and first["bold"] and first["align"] == "right" and first["color"] == "info"
+    assert [r["op"] for r in first["rules"]] == ["is", "between"]
+    assert first["rules"][0] == {"field": "presence", "op": "is", "value": "on", "then": {"text": "Home", "color": "success", "icon": "home"}}
+    assert clean[1]["component"] == "text" and clean[1]["key"] == "" and clean[1]["style"] == "text-m"
+    assert main._clean_cards({"d": {"w": 2, "h": 2, "slots": clean}}) == {"d": {"w": 2, "h": 2, "slots": clean}}  # stable
