@@ -97,5 +97,6 @@ test('words coloured and styled inline', () => {
 	expect(mix.color).toBe('warning'); // no {/color} anywhere: the old meaning, the whole component
 	expect(run('plain').parts).toBeUndefined();
 	// without {/color} the old meaning holds: the colour is the component's
-	expect(run('{color warning}Hot')).toMatchObject({ text: 'Hot', color: 'warning', parts: undefined });
+	expect(run('{color warning}Hot')).toMatchObject({ text: 'Hot', color: 'warning' });
+	expect(run('{color warning}Hot').parts).toBeUndefined();
 });
