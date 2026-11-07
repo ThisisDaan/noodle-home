@@ -2,6 +2,7 @@
 	import Icon from './Icon.svelte';
 	import { iconFor, isOn } from './api.ts';
 	import CardBody from './devices/CardBody.svelte';
+	import LookPreview from './devices/LookPreview.svelte';
 	import TileSubtitle from './devices/TileSubtitle.svelte';
 	import {
 		COLORS, COMPONENTS, HOURS, ICONS, MAX_H, MAX_W, PRESETS, STYLES, autoStyle, compatible, defaultDesign, freeSpot, grid, hoursLabel, minSize,
@@ -18,6 +19,23 @@
 	const CELL_W = 256, CELL_H = 144, GAP = 12, BODY_GAP = 6;
 	const STAGE_W = MAX_W * CELL_W + (MAX_W - 1) * GAP;
 	const STAGE_H = MAX_H * CELL_H + (MAX_H - 1) * GAP;
+
+	// the side panel's width: drag the bar between the card and the panel (kept for next time)
+	const PANEL_MIN = 280, PANEL_MAX = 720;
+	const clampPanel = (w: number) => Math.min(PANEL_MAX, Math.max(PANEL_MIN, Math.round(w)));
+	let panelW = $state(clampPanel((() => { try { return Number(localStorage.getItem('noodle.designer.panel')) || 360; } catch { return 360; } })()));
+	function setPanel(w: number) {
+		panelW = clampPanel(w);
+		try { localStorage.setItem('noodle.designer.panel', String(panelW)); } catch { /* not kept */ }
+	}
+	function dragPanel(e: PointerEvent) {
+		const bar = e.currentTarget as HTMLElement, x0 = e.clientX, w0 = panelW;
+		bar.setPointerCapture(e.pointerId);
+		const move = (m: PointerEvent) => (panelW = clampPanel(w0 + x0 - m.clientX));
+		const up = () => { bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); setPanel(panelW); };
+		bar.addEventListener('pointermove', move);
+		bar.addEventListener('pointerup', up);
+	}
 
 	let dialog: HTMLDialogElement;
 	const device = $derived(cardDesigner.deviceId ? live.devices[cardDesigner.deviceId] : undefined);
@@ -252,8 +270,12 @@
 					</div>
 				</div>
 
-				<!-- The panel never changes place: what is selected only fills it in. -->
-				<aside class="border-base-content/10 flex max-h-[45dvh] shrink-0 flex-col gap-5 overflow-y-auto border-t p-4 lg:max-h-none lg:w-80 lg:border-t-0 lg:border-l">
+					<div class="hover:bg-primary/40 active:bg-primary/60 -mr-px hidden w-1.5 shrink-0 cursor-col-resize touch-none transition-colors lg:block" role="slider" aria-orientation="vertical" aria-valuemin={PANEL_MIN} aria-valuemax={PANEL_MAX} aria-valuenow={panelW}
+						aria-label="Panel width" tabindex="0" onpointerdown={dragPanel}
+						onkeydown={(e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); setPanel(panelW + (e.key === 'ArrowLeft' ? 24 : -24)); } }}></div>
+
+<!-- The panel never changes place: what is selected only fills it in. -->
+				<aside class="border-base-content/10 flex max-h-[45dvh] shrink-0 flex-col gap-5 overflow-y-auto border-t p-4 lg:max-h-none lg:w-[var(--pw)] lg:border-t-0 lg:border-l" style="--pw: {panelW}px">
 					<section class="flex flex-col gap-2">
 						<h3 class="text-sm font-semibold">Card size</h3>
 						<div class="flex items-center gap-2 text-sm">
@@ -275,7 +297,8 @@
 						<h3 class="text-sm font-semibold">Add to the card</h3>
 						<div class="grid grid-cols-3 gap-2">
 							{#each PRESETS as p (p.id)}
-								<button class="btn btn-sm btn-soft" disabled={p.component !== 'text' && !presetFields(device, p).length} onclick={() => add(p)}>{p.label}</button>
+								<button class="btn btn-soft h-auto flex-col gap-0.5 px-1 py-2 text-xs" disabled={p.component !== 'text' && !presetFields(device, p).length} onclick={() => add(p)}>
+										<LookPreview look={p.component === 'text' ? 'label' : (p.style ?? p.component)} class="h-8 w-full" />{p.label}</button>
 							{/each}
 						</div>
 						<p class="min-h-8 text-xs opacity-70" role="status">{note}</p>
@@ -300,22 +323,29 @@
 								{/if}
 								{#if sel.component === 'value' || sel.component === 'text'}
 									<div class="flex flex-col gap-1 text-xs font-medium opacity-80">Looks like
-										<div class="grid grid-cols-2 gap-1.5">
-											{#each styles as s (s)}
-												<button class="btn btn-xs" class:btn-primary={sel.style === s} onclick={() => setStyle(s)}>{STYLES[s].label}</button>
-											{/each}
+											<div class="grid grid-cols-3 gap-1.5">
+												{#each styles as st (st)}
+													<button class="btn btn-soft h-auto flex-col gap-0.5 px-1 py-1.5 text-xs" class:btn-primary={sel.style === st} aria-pressed={sel.style === st} onclick={() => setStyle(st)}>
+														<LookPreview look={st} class="h-7 w-full" />{STYLES[st].label}</button>
+												{/each}
+											</div>
 										</div>
-									</div>
-									{#if sel.style && STYLES[sel.style].graph}
+										{#if sel.style && STYLES[sel.style].graph}
 										<label class="flex flex-col gap-1 text-xs font-medium opacity-80">History
 											<select class="select select-sm w-full" value={sel.hours ?? 6} onchange={(e) => patch({ hours: Number(e.currentTarget.value) })}>
 												{#each HOURS as h (h)}<option value={h}>Last {hoursLabel(h)}</option>{/each}
 											</select>
 										</label>
+											<div class="flex flex-wrap items-center gap-1.5 text-xs font-medium opacity-80" role="group" aria-label="Colour">Colour
+												<button class="btn btn-xs btn-circle btn-outline" class:btn-active={!sel.color} aria-label="Default colour" onclick={() => patch({ color: undefined })}><Icon name="close" class="size-3" /></button>
+												{#each Object.keys(COLORS) as c (c)}
+													<button class="size-5 rounded-full border-2 {COLORS[c as CardColor].dot} {sel.color === c ? 'border-base-content' : 'border-transparent'}" aria-label={c} aria-pressed={sel.color === c} onclick={() => patch({ color: c as CardColor })}></button>
+												{/each}
+											</div>
 									{/if}
-									<div class="flex flex-col gap-1 text-xs font-medium opacity-80">Text
-										<textarea bind:this={area} class="textarea textarea-sm w-full font-mono text-xs leading-snug" rows="5" spellcheck="false" maxlength="1000"
-											value={sel.template ?? ''} placeholder={sel.component === 'text' ? 'Type your text' : 'As the device says it'}
+									<div class="flex flex-col gap-1 text-xs font-medium opacity-80">Value shown
+										<textarea bind:this={area} class="textarea textarea-sm w-full font-mono text-xs leading-snug" rows="7" spellcheck="false" maxlength="1000"
+											value={sel.template ?? ''} placeholder={sel.component === 'text' ? 'Type your text' : 'Empty: the field as the device says it. Or write what to show, with {if …} blocks.'}
 											oninput={(e) => patch({ template: e.currentTarget.value || undefined })}></textarea>
 										{#if templateError}<span class="text-error font-normal" role="alert">{templateError}</span>{/if}
 										<div class="grid grid-cols-2 gap-1.5">
@@ -351,8 +381,8 @@
 										</div>
 									{/if}
 								{/if}
-								<label class="flex flex-col gap-1 text-xs font-medium opacity-80">Name on the card
-									<input class="input input-sm w-full" value={sel.label ?? ''} placeholder={entity?.name ?? ''} maxlength="40" oninput={(e) => setLabel(e.currentTarget.value)} />
+								<label class="flex flex-col gap-1 text-xs font-medium opacity-80">Caption (optional)
+									<input class="input input-sm w-full" value={sel.label ?? ''} placeholder="None" maxlength="40" oninput={(e) => setLabel(e.currentTarget.value)} />
 								</label>
 							{:else if tab === 'format'}
 								{#if entity && typeof entity.state === 'number'}

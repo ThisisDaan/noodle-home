@@ -6,7 +6,7 @@
 
 	/** A card component that draws the last hours of a number: a line, bars (the average of each stretch of time)
 	 * or a small sparkline next to the current value. It fills the box it is given. */
-	let { device, entity, slot, name, labelled = false, text: custom }: { device: Device; entity: Entity; slot: CardSlot; name: string; labelled?: boolean; text?: string } = $props();
+	let { device, entity, slot, name, labelled = false, text: custom, color = '' }: { device: Device; entity: Entity; slot: CardSlot; name: string; labelled?: boolean; text?: string; color?: string } = $props();
 
 	const hours = $derived(slot.hours ?? 6);
 	const history = new History(() => ({ device_id: device.id, key: slot.key, hours }));
@@ -46,11 +46,11 @@
 			{#if labelled}<span class="max-w-24 truncate text-xs leading-none opacity-70">{name}</span>{/if}
 			<span class="text-lg leading-tight font-bold tabular-nums">{text}</span>
 		</div>
-		<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="text-primary min-w-0 grow p-1.5" role="img" aria-label="{name}, last {hours} hours">
+		<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="{color || 'text-primary'} min-w-0 grow p-1.5" role="img" aria-label="{name}, last {hours} hours">
 			<path d={line} fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
 		</svg>
 	{:else}
-		<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="text-primary absolute inset-0 size-full" role="img" aria-label="{name}, last {hours} hours">
+		<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="{color || 'text-primary'} absolute inset-0 size-full" role="img" aria-label="{name}, last {hours} hours">
 			{#if slot.style === 'bars'}
 				{#each bars as b, i (i)}
 					<rect x={i * (W / BUCKETS) + 0.4} y={H - b} width={W / BUCKETS - 0.8} height={b} fill="currentColor" opacity="0.7" />

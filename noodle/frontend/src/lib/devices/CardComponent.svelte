@@ -13,7 +13,9 @@
 	 * a bar that fills, a tinted status bar, a big reading). `labelled`: show the field's name (cards somebody
 	 * designed; the standard looks do not need it). `preview`: in the designer, where a component a rule hides is
 	 * only faded. The component's text, number format, text style and rules come from the slot (cardText.ts). */
-	let { device, slot, labelled = false, preview = false }: { device: Device; slot: CardSlot; labelled?: boolean; preview?: boolean } = $props();
+	let { device, slot, preview = false }: { device: Device; slot: CardSlot; labelled?: boolean; preview?: boolean } = $props();
+	/** a name is shown only when somebody wrote one for this component (its caption); the value is the value */
+	const labelled = $derived(!!slot.label);
 
 	const clock = useClock();
 	const entity = $derived(device.entities.find((e) => e.key === slot.key));
@@ -100,7 +102,7 @@
 		</div>
 	{:else if slot.component === 'value'}
 		{#if style === 'line' || style === 'bars' || style === 'spark'}
-			<HistoryGraph {device} {entity} {slot} {name} {labelled} text={res.text} />
+			<HistoryGraph {device} {entity} {slot} {name} {labelled} text={res.text} color={textColor} />
 		{:else if style === 'chip' && look !== 'status'}
 			<div class="bg-base-content/10 rounded-box relative h-full min-w-0 overflow-hidden {textColor}" class:opacity-50={!device.available}>
 				<span class="absolute inset-0 transition-opacity {tint || 'bg-warning/50'}" class:opacity-0={!res.color && !isOn(device)}></span>

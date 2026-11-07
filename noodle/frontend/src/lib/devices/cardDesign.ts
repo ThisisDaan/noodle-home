@@ -45,11 +45,11 @@ export const STYLES: Record<CardStyle, { label: string; numeric?: boolean; plain
 	'text-s': { label: 'Small text', plain: true, w: 2, h: 1 },
 	'text-m': { label: 'Text', plain: true, w: 2, h: 1 },
 	'text-l': { label: 'Big text', plain: true, w: 2, h: 2 },
-	chip: { label: 'Status bar', w: 4, h: 2 },
+	chip: { label: 'Status', w: 4, h: 2 },
 	icon: { label: 'Icon', w: 1, h: 2 },
 	gauge: { label: 'Gauge', numeric: true, w: 2, h: 2 },
 	bar: { label: 'Progress bar', numeric: true, w: 4, h: 1 },
-	line: { label: 'Line graph', numeric: true, graph: true, w: 4, h: 2 },
+	line: { label: 'Graph', numeric: true, graph: true, w: 4, h: 2 },
 	bars: { label: 'Bar graph', numeric: true, graph: true, w: 4, h: 2 },
 	spark: { label: 'Sparkline', numeric: true, graph: true, w: 3, h: 1 }
 };
@@ -81,11 +81,13 @@ export function compatible(component: CardComponentType, e: Entity): boolean {
 
 /** What the editor offers to add: a component, and for a reading the style it starts in. */
 export const PRESETS: { id: string; label: string; component: CardComponentType; style?: CardStyle }[] = [
-	{ id: 'text', label: 'Value', component: 'value', style: 'text-l' },
-	{ id: 'graph', label: 'Graph', component: 'value', style: 'line' },
-	{ id: 'gauge', label: 'Gauge', component: 'value', style: 'gauge' },
+	{ id: 'number', label: 'Number', component: 'value', style: 'text-l' },
+	{ id: 'label', label: 'Text', component: 'text', style: 'text-m' },
 	{ id: 'status', label: 'Status', component: 'value', style: 'chip' },
-	{ id: 'label', label: 'Label', component: 'text', style: 'text-m' },
+	{ id: 'graph', label: 'Graph', component: 'value', style: 'line' },
+	{ id: 'bars', label: 'Bars', component: 'value', style: 'bars' },
+	{ id: 'gauge', label: 'Gauge', component: 'value', style: 'gauge' },
+	{ id: 'progress', label: 'Progress', component: 'value', style: 'bar' },
 	{ id: 'switch', label: 'Switch', component: 'switch' },
 	{ id: 'slider', label: 'Slider', component: 'slider' },
 	{ id: 'dial', label: 'Dial', component: 'dial' }
