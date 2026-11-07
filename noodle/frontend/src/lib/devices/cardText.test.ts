@@ -93,7 +93,8 @@ test('words coloured and styled inline', () => {
 	expect(mix.parts?.map((p) => [p.text, p.color, p.bold, p.italic, p.underline])).toEqual([
 		['Temp: ', undefined, undefined, undefined, undefined], ['21 °C', undefined, true, undefined, undefined], [' ', undefined, undefined, undefined, undefined],
 		['now', undefined, undefined, true, undefined], [' ', undefined, undefined, undefined, undefined], ['ok', undefined, undefined, undefined, true],
-		[' ', undefined, undefined, undefined, undefined], ['!', 'warning', undefined, undefined, undefined]]);
+		[' ', undefined, undefined, undefined, undefined], ['!', undefined, undefined, undefined, undefined]]);
+	expect(mix.color).toBe('warning'); // no {/color} anywhere: the old meaning, the whole component
 	expect(run('plain').parts).toBeUndefined();
 	// without {/color} the old meaning holds: the colour is the component's
 	expect(run('{color warning}Hot')).toMatchObject({ text: 'Hot', color: 'warning', parts: undefined });
