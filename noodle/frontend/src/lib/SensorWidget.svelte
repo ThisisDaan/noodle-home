@@ -1,41 +1,17 @@
 <script lang="ts">
-	import { api, formatState } from './api.ts';
-	import { live, type HistoryRow } from './live.svelte.ts';
+	import { formatState } from './api.ts';
+	import { History } from './history.svelte.ts';
+	import { live } from './live.svelte.ts';
 
 	/** bare: no frame or padding, to sit inside a card. */
 	let { device_id, key, title, hours = 24, bare = false }: { device_id: string; key: string; title?: string; hours?: number; bare?: boolean } = $props();
 
-	type Point = { ts: number; value: number };
-	let points = $state<Point[]>([]);
+	const history = new History(() => ({ device_id, key, hours }));
+	const points = $derived(history.points);
 
 	const device = $derived(live.devices[device_id]);
 	const entity = $derived(device?.entities.find((e) => e.key === key));
 	const W = 300, H = 64, PAD = 4;
-
-	// The last `hours` of readings, then new ones as the server pushes them (nothing is polled).
-	$effect(() => {
-		const from = Date.now() / 1000 - hours * 3600;
-		let alive = true;
-		api<{ ts: number; key: string; value: unknown }[]>(`/devices/${encodeURIComponent(device_id)}/history?limit=5000&since=${from}`)
-			.then((rows) => {
-				if (!alive) return;
-				points = rows
-					.filter((r) => r.key === key && typeof r.value === 'number')
-					.map((r) => ({ ts: r.ts, value: r.value as number }))
-					.sort((a, b) => a.ts - b.ts);
-			})
-			.catch(() => {});
-		const onRow = (row: HistoryRow) => {
-			if (row.device_id === device_id && row.key === key && typeof row.value === 'number') {
-				points = [...points.filter((p) => p.ts >= Date.now() / 1000 - hours * 3600), { ts: row.ts, value: row.value }];
-			}
-		};
-		live.historyListeners.add(onRow);
-		return () => {
-			alive = false;
-			live.historyListeners.delete(onRow);
-		};
-	});
 
 	const range = $derived.by(() => {
 		if (!points.length) return null;

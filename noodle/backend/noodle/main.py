@@ -436,10 +436,17 @@ def remove_area(name: str) -> list[str]:
 WIDGET_TYPES = {"status", "favourites", "rooms", "flows", "sensor"}
 DEFAULT_WIDGETS = [{"type": "status"}, {"type": "favourites"}, {"type": "rooms"}]
 DEVICE_GROUPS = {"room", "type", "source", "none"}
-# How a device's card is designed (see the frontend CardDesigner): a size with a grid of slots, and the components
-# placed in it. Small is 2 slots wide and 1 high, wide is 4x1, large is 4x3. A component fills w x h slots.
-CARD_SIZES = {"small": (2, 1), "wide": (4, 1), "large": (4, 3)}
-CARD_COMPONENTS = {"switch": (1, 1), "value": (1, 1), "dial": (2, 1), "slider": (1, 1), "graph": (2, 2)}
+# How a device's card is designed (see the frontend CardDesigner): a size in dashboard cells (w x h) and components
+# placed anywhere on the card's fine grid (4 columns per cell wide, 2 rows per cell high), each with its own x, y, w, h
+# and a display style. (frontend devices/cardDesign.ts must say the same.)
+CARD_MAX = (4, 4)
+CARD_PER_CELL = (4, 2)
+CARD_COMPONENTS = {"switch", "value", "dial", "slider"}
+CARD_STYLES = {"text-s", "text-m", "text-l", "chip", "icon", "gauge", "bar", "line", "bars", "spark"}
+CARD_HOURS = {1, 6, 24, 72, 168}
+# The first card designs: a size name and slots by number. Still read (once), and written the new way.
+_OLD_CARD_SIZES = {"small": (2, 1, 1, 1), "wide": (4, 1, 2, 1), "large": (4, 3, 2, 2)}  # cols, rows, new w, new h
+_OLD_CARD_COMPONENTS = {"switch": (1, 1), "value": (1, 1), "dial": (2, 1), "slider": (1, 1), "graph": (2, 2)}
 DEVICE_SORTS = {"name", "recent"}
 
 
@@ -453,34 +460,70 @@ class LayoutBody(BaseModel):
     cards: dict | None = None
 
 
+def _upgrade_card(design: dict) -> dict:
+    """A first-version design (`size` + slots by number) as the current one. Safe to run on a current design: it
+    has no `size`, so it comes back as it was."""
+    if design.get("size") not in _OLD_CARD_SIZES:
+        return design
+    cols, rows, w, h = _OLD_CARD_SIZES[design["size"]]
+    fine_cols, fine_rows = w * CARD_PER_CELL[0], h * CARD_PER_CELL[1]
+    slots = []
+    for slot in design.get("slots") if isinstance(design.get("slots"), list) else []:
+        at = slot.get("at") if isinstance(slot, dict) else None
+        if isinstance(at, bool) or not isinstance(at, int) or slot.get("component") not in _OLD_CARD_COMPONENTS:
+            continue
+        sw, sh = _OLD_CARD_COMPONENTS[slot["component"]]
+        x, y = at % cols, at // cols
+        # old slots -> fine cells: stretch each row/column range, so neighbours stay neighbours and never overlap
+        x0, x1 = x * fine_cols // cols, (x + sw) * fine_cols // cols
+        y0, y1 = y * fine_rows // rows, (y + sh) * fine_rows // rows
+        item = {**slot, "x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0}
+        item.pop("at")
+        if slot["component"] == "graph":
+            item.update(component="value", style="line")
+        slots.append(item)
+    return {"w": w, "h": h, "slots": slots}
+
+
 def _clean_cards(raw) -> dict:
-    """Keep the card designs that make sense: a known size, and components that fit inside it without overlapping."""
+    """Keep the card designs that make sense: a size in cells, and components that sit inside the card's grid
+    without overlapping. Designs of the first version are upgraded on the way."""
     if not isinstance(raw, dict):
         return {}
+
+    def whole(value, low, high):
+        return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
+
     clean = {}
     for device_id, design in list(raw.items())[:1000]:
-        if not isinstance(device_id, str) or not isinstance(design, dict) or design.get("size") not in CARD_SIZES:
+        if not isinstance(device_id, str) or not isinstance(design, dict):
             continue
-        cols, rows = CARD_SIZES[design["size"]]
+        design = _upgrade_card(design)
+        if not whole(design.get("w"), 1, CARD_MAX[0]) or not whole(design.get("h"), 1, CARD_MAX[1]):
+            continue
+        cols, rows = design["w"] * CARD_PER_CELL[0], design["h"] * CARD_PER_CELL[1]
         taken: set[tuple[int, int]] = set()
         slots = []
         for slot in design.get("slots") if isinstance(design.get("slots"), list) else []:
             if not isinstance(slot, dict) or slot.get("component") not in CARD_COMPONENTS:
                 continue
-            at, key = slot.get("at"), slot.get("key")
-            if isinstance(at, bool) or not isinstance(at, int) or not isinstance(key, str) or not key:
+            key = slot.get("key")
+            x, y, w, h = (slot.get(k) for k in ("x", "y", "w", "h"))
+            if not isinstance(key, str) or not key or not (whole(x, 0, cols - 1) and whole(y, 0, rows - 1) and whole(w, 1, cols) and whole(h, 1, rows)):
                 continue
-            w, h = CARD_COMPONENTS[slot["component"]]
-            x, y = at % cols, at // cols
             cells = {(x + i, y + j) for i in range(w) for j in range(h)}
             if x + w > cols or y + h > rows or cells & taken:
                 continue
             taken |= cells
-            item = {"at": at, "component": slot["component"], "key": key[:100]}
+            item = {"x": x, "y": y, "w": w, "h": h, "component": slot["component"], "key": key[:100]}
+            if slot["component"] == "value" and slot.get("style") in CARD_STYLES:
+                item["style"] = slot["style"]
+            if slot.get("hours") in CARD_HOURS and not isinstance(slot.get("hours"), bool):
+                item["hours"] = slot["hours"]
             if isinstance(slot.get("label"), str) and slot["label"].strip():
                 item["label"] = slot["label"].strip()[:40]
             slots.append(item)
-        clean[device_id[:100]] = {"size": design["size"], "slots": slots}
+        clean[device_id[:100]] = {"w": design["w"], "h": design["h"], "slots": slots}
     return clean
 
 

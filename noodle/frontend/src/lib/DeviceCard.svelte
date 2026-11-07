@@ -1,8 +1,8 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
-	import CardSlots from './devices/CardSlots.svelte';
+	import CardBody from './devices/CardBody.svelte';
 	import DeviceFace from './devices/DeviceFace.svelte';
-	import { defaultDesign, span } from './devices/cardDesign.ts';
+	import { defaultDesign } from './devices/cardDesign.ts';
 	import TileSubtitle from './devices/TileSubtitle.svelte';
 	import { motionActive } from './devices/kinds.ts';
 	import { iconFor, isOn, type Device } from './api';
@@ -34,9 +34,8 @@
      that is always 3rem high. Battery and other properties are in the device's sheet, not here. -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-	class="tile group relative flex flex-col justify-between gap-3 p-3.5 {span(design?.size)}"
-	class:h-36={!editing && design?.size !== 'large'}
-	class:h-[18.75rem]={!editing && design?.size === 'large'}
+	class="tile card-span group relative flex flex-col justify-between gap-3 p-3.5"
+	style="--cw: {design?.w ?? 1}; --ch: {design?.h ?? 1};"
 	class:opacity-40={dim}
 	class:is-on={lit}
 	class:is-dragging={dragging}
@@ -82,8 +81,8 @@
 	</div>
 
 	{#if !editing}
-		<div class="relative z-10 {design?.size === 'large' ? 'flex min-h-0 grow flex-col' : ''}">
-			{#if design}<CardSlots {device} {design} labelled={!!saved} />{:else}<DeviceFace {device} size="tile" />{/if}
+		<div class="relative z-10 {design ? 'min-h-0 grow' : ''}">
+			{#if design}<CardBody {device} {design} labelled={!!saved} />{:else}<DeviceFace {device} size="tile" />{/if}
 		</div>
 	{/if}
 
