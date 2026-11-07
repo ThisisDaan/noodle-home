@@ -5,9 +5,9 @@
 	import TileSubtitle from './devices/TileSubtitle.svelte';
 	import {
 		COLORS, COMPONENTS, HOURS, ICONS, MAX_H, MAX_W, PRESETS, STYLES, autoStyle, compatible, defaultDesign, freeSpot, grid, hoursLabel, minSize,
-		placeable, presetFields, startSize, stylesFor, type CardColor, type CardDesign, type CardRule, type CardSlot, type CardStyle
+		placeable, presetFields, startSize, stylesFor, type CardColor, type CardDesign, type CardSlot, type CardStyle
 	} from './devices/cardDesign.ts';
-	import { TOKENS, resolve } from './devices/cardText.ts';
+	import { TOKENS, fieldToken, resolve, rulesToTemplate } from './devices/cardText.ts';
 	import { motionActive } from './devices/kinds.ts';
 	import { cardDesigner } from './designer.svelte';
 	import { layout } from './layout.svelte';
@@ -46,9 +46,10 @@
 	const entity = $derived(sel ? device?.entities.find((e) => e.key === sel.key) : undefined);
 	const fields = $derived(sel && device ? device.entities.filter((e) => compatible(sel.component, e)) : []);
 	const styles = $derived<CardStyle[]>(entity ? stylesFor(entity) : sel?.component === 'text' ? ['text-s', 'text-m', 'text-l', 'chip'] : []);
-	let tab = $state<'content' | 'format' | 'rules'>('content');
-	/** the rule that applies to the selected component right now (it is highlighted in the Rules list) */
-	const matched = $derived(sel && device ? resolve(sel, device, Date.now()).rule : -1);
+	let tab = $state<'content' | 'format'>('content');
+	let area = $state<HTMLTextAreaElement>();
+	/** a mistake in the selected component's template */
+	const templateError = $derived(sel?.template && device ? resolve(sel, device, 0).error : undefined);
 	const cardPx = $derived({ w: draft.w * CELL_W + (draft.w - 1) * GAP, h: draft.h * CELL_H + (draft.h - 1) * GAP });
 	const fieldName = (k: string) => device?.entities.find((e) => e.key === k)?.name ?? k;
 
@@ -90,26 +91,24 @@
 	function patch(p: Partial<CardSlot>) {
 		if (selected !== null && sel) draft.slots[selected] = { ...sel, ...p };
 	}
-	function insert(token: string) {
-		if (token && sel) patch({ template: (sel.template ?? '') + token });
+	/** put text into the template where the cursor is (at the end when there is no cursor) */
+	function insert(snippet: string) {
+		if (!snippet || !sel) return;
+		const text = sel.template ?? '';
+		const from = area?.selectionStart ?? text.length, to = area?.selectionEnd ?? text.length;
+		patch({ template: (text.slice(0, from) + snippet + text.slice(to)).slice(0, 1000) });
+		const at = from + snippet.length;
+		queueMicrotask(() => { area?.focus(); area?.setSelectionRange(at, at); });
 	}
-	function setRule(i: number, p: Partial<CardRule>) {
-		if (sel) patch({ rules: (sel.rules ?? []).map((r, j) => (j === i ? { ...r, ...p } : r)) });
+	/** an if / else block for a field, ready to fill in */
+	function ifBlock(key: string): string {
+		const f = device?.entities.find((x) => x.key === key);
+		const name = fieldToken(key).replace(/^\{|\}$/g, '');
+		const cond = typeof f?.state === 'boolean' ? `${name} == true` : typeof f?.state === 'number' ? `${name} > 0` : `${name} == 'text'`;
+		return `{if ${cond}}\nYes\n{:else}\nNo\n{/if}`;
 	}
-	function setThen(i: number, p: Partial<CardRule['then']>) {
-		if (sel) patch({ rules: (sel.rules ?? []).map((r, j) => (j === i ? { ...r, then: { ...r.then, ...p } } : r)) });
-	}
-	/** a starting comparison for a field: yes/no, a number, or text */
-	function firstRule(key: string): Pick<CardRule, 'op' | 'value' | 'value2'> {
-		const state = device?.entities.find((f) => f.key === key)?.state;
-		return typeof state === 'boolean' ? { op: 'is', value: 'on' } : typeof state === 'number' ? { op: 'above', value: 0 } : { op: 'is', value: '' };
-	}
-	const resetValue = (key: string) => ({ ...firstRule(key), value2: undefined });
-	function addRule() {
-		if (sel) patch({ rules: [...(sel.rules ?? []), { ...firstRule(sel.key), then: { color: 'success' } }] });
-	}
-	function removeRule(i: number) {
-		if (sel) patch({ rules: (sel.rules ?? []).filter((_, j) => j !== i) });
+	function convertRules() {
+		if (sel && device) patch({ template: rulesToTemplate(sel, device).slice(0, 1000), rules: undefined });
 	}
 	function remove() {
 		if (selected === null) return;
@@ -286,7 +285,7 @@
 						<h3 class="text-sm font-semibold">{sel ? (sel.component === 'value' ? 'Reading' : COMPONENTS[sel.component].label) : 'Selected'}</h3>
 						{#if sel && (entity || sel.component === 'text')}
 							<div class="tabs tabs-box tabs-sm" role="tablist">
-								{#each [['content', 'Content'], ['format', 'Format'], ['rules', `Rules${sel.rules?.length ? ` (${sel.rules.length})` : ''}`]] as [id, label] (id)}
+								{#each [['content', 'Content'], ['format', 'Format']] as [id, label] (id)}
 									<button role="tab" class="tab" class:tab-active={tab === id} onclick={() => (tab = id as typeof tab)}>{label}</button>
 								{/each}
 							</div>
@@ -315,14 +314,42 @@
 										</label>
 									{/if}
 									<div class="flex flex-col gap-1 text-xs font-medium opacity-80">Text
-										<input class="input input-sm w-full" value={sel.template ?? ''} placeholder={sel.component === 'text' ? 'Type your text' : 'As the device says it'} maxlength="200"
-											oninput={(e) => patch({ template: e.currentTarget.value || undefined })} />
-										<select class="select select-xs w-full" value="" onchange={(e) => { insert(e.currentTarget.value); e.currentTarget.value = ''; }} aria-label="Insert a value into the text">
-											<option value="">Insert a value…</option>
-											{#each TOKENS as t (t.token)}<option value={t.token}>{t.label}</option>{/each}
-											{#each device.entities as f (f.key)}<option value={`{field:${f.key}}`}>{f.name} (field)</option>{/each}
-										</select>
+										<textarea bind:this={area} class="textarea textarea-sm w-full font-mono text-xs leading-snug" rows="5" spellcheck="false" maxlength="1000"
+											value={sel.template ?? ''} placeholder={sel.component === 'text' ? 'Type your text' : 'As the device says it'}
+											oninput={(e) => patch({ template: e.currentTarget.value || undefined })}></textarea>
+										{#if templateError}<span class="text-error font-normal" role="alert">{templateError}</span>{/if}
+										<div class="grid grid-cols-2 gap-1.5">
+											<select class="select select-xs w-full" value="" onchange={(e) => { insert(e.currentTarget.value); e.currentTarget.value = ''; }} aria-label="Insert a value">
+												<option value="">Insert a value…</option>
+												<optgroup label="This component">{#each TOKENS as t (t.token)}<option value={t.token}>{t.label}</option>{/each}</optgroup>
+												<optgroup label="Fields of the device">{#each device.entities as f (f.key)}<option value={fieldToken(f.key)}>{f.name}</option>{/each}</optgroup>
+											</select>
+											<select class="select select-xs w-full" value="" onchange={(e) => { const v = e.currentTarget.value; insert(v.startsWith('if:') ? ifBlock(v.slice(3)) : v); e.currentTarget.value = ''; }} aria-label="Insert a block">
+												<option value="">Insert a block…</option>
+												<optgroup label="If / else, on a field">{#each device.entities as f (f.key)}<option value={`if:${f.key}`}>if {f.name}</option>{/each}</optgroup>
+												<optgroup label="Style">
+													<option value={'{color success}'}>colour…</option><option value={'{icon motion}'}>icon…</option><option value={'{hide}'}>hide</option>
+												</optgroup>
+											</select>
+										</div>
+										<details class="font-normal opacity-80">
+											<summary class="cursor-pointer">How to write it</summary>
+											<pre class="bg-base-200 rounded-box mt-1 p-2 text-[11px] leading-snug whitespace-pre-wrap">{`{if motion == true}
+  {color warning}Motion detected
+{:else if temp > 25}
+  Warm: {temp}
+{:else}
+  No motion
+{/if}`}</pre>
+											<p class="mt-1">Values in braces: <code>{'{value}'}</code>, <code>{'{name}'}</code> or a field's key. Conditions: == != &gt; &lt; &gt;= &lt;= and or not. Style a block with <code>{'{color …}'}</code> (primary, success, warning, error, info…), <code>{'{icon …}'}</code> or <code>{'{hide}'}</code>.</p>
+										</details>
 									</div>
+									{#if sel.rules?.length}
+										<div class="bg-warning/15 rounded-box flex flex-col gap-2 p-2.5 text-xs font-normal">
+											This component still has {sel.rules.length} rule{sel.rules.length === 1 ? '' : 's'} from the old rules list. They work, but you can't edit them.
+											<button class="btn btn-xs btn-warning" onclick={convertRules}>Turn them into a template</button>
+										</div>
+									{/if}
 								{/if}
 								<label class="flex flex-col gap-1 text-xs font-medium opacity-80">Name on the card
 									<input class="input input-sm w-full" value={sel.label ?? ''} placeholder={entity?.name ?? ''} maxlength="40" oninput={(e) => setLabel(e.currentTarget.value)} />
@@ -357,57 +384,6 @@
 										{/each}
 									</div>
 								</div>
-							{:else}
-								<p class="text-xs opacity-70">First rule that is true wins. It can change the text, colour and icon, or hide the component.</p>
-								{#each sel.rules ?? [] as r, i (i)}
-									{@const target = device.entities.find((f) => f.key === (r.field || sel.key))}
-									{@const kind = typeof target?.state === 'boolean' ? 'bool' : typeof target?.state === 'number' ? 'num' : 'text'}
-									<div class="bg-base-200 rounded-box flex flex-col gap-2 p-2.5 {matched === i ? 'ring-primary ring-1' : ''}">
-										<div class="flex items-center gap-1.5 text-xs">
-											<span class="font-semibold">When</span>
-											<select class="select select-xs min-w-0 grow" value={r.field ?? ''} aria-label="Field" onchange={(e) => setRule(i, { field: e.currentTarget.value || undefined, ...resetValue(e.currentTarget.value || sel.key) })}>
-												{#if sel.key}<option value="">{entity?.name ?? 'this field'}</option>{/if}
-												{#each device.entities.filter((f) => f.key !== sel.key) as f (f.key)}<option value={f.key}>{f.name}</option>{/each}
-											</select>
-											<button class="btn btn-ghost btn-xs btn-square" aria-label="Remove rule" onclick={() => removeRule(i)}><Icon name="close" class="size-3.5" /></button>
-										</div>
-										<div class="flex items-center gap-1.5">
-											<select class="select select-xs w-24 shrink-0" value={r.op} aria-label="Comparison" onchange={(e) => setRule(i, { op: e.currentTarget.value as CardRule['op'] })}>
-												<option value="is">is</option>
-												<option value="not">is not</option>
-												{#if kind === 'num'}<option value="above">above</option><option value="below">below</option><option value="between">between</option>{/if}
-											</select>
-											{#if kind === 'bool'}
-												<select class="select select-xs min-w-0 grow" value={String(r.value)} aria-label="Value" onchange={(e) => setRule(i, { value: e.currentTarget.value })}>
-													<option value="on">On / yes</option><option value="off">Off / no</option>
-												</select>
-											{:else if kind === 'num'}
-												<input type="number" class="input input-xs min-w-0 grow" value={r.value} aria-label="Value" oninput={(e) => setRule(i, { value: Number(e.currentTarget.value) })} />
-												{#if r.op === 'between'}<span class="text-xs">and</span>
-													<input type="number" class="input input-xs min-w-0 grow" value={r.value2 ?? 0} aria-label="Upper value" oninput={(e) => setRule(i, { value2: Number(e.currentTarget.value) })} />{/if}
-											{:else}
-												<input class="input input-xs min-w-0 grow" value={r.value} aria-label="Value" maxlength="100" oninput={(e) => setRule(i, { value: e.currentTarget.value })} />
-											{/if}
-										</div>
-										<span class="text-xs font-semibold">Then</span>
-										<input class="input input-xs w-full" value={r.then.text ?? ''} placeholder="Show this text (optional)" maxlength="200" aria-label="Text"
-											oninput={(e) => setThen(i, { text: e.currentTarget.value === '' ? undefined : e.currentTarget.value })} />
-										<div class="flex items-center gap-1.5">
-											<select class="select select-xs min-w-0 grow" value={r.then.color ?? ''} aria-label="Colour" onchange={(e) => setThen(i, { color: (e.currentTarget.value || undefined) as CardColor | undefined })}>
-												<option value="">Colour: as is</option>
-												{#each Object.keys(COLORS) as c (c)}<option value={c}>{c}</option>{/each}
-											</select>
-											<select class="select select-xs min-w-0 grow" value={r.then.icon ?? ''} aria-label="Icon" onchange={(e) => setThen(i, { icon: e.currentTarget.value || undefined })}>
-												<option value="">Icon: as is</option>
-												{#each ICONS as ic (ic)}<option value={ic}>{ic}</option>{/each}
-											</select>
-										</div>
-										<label class="flex items-center gap-2 text-xs"><input type="checkbox" class="checkbox checkbox-xs" checked={!!r.then.hide} onchange={(e) => setThen(i, { hide: e.currentTarget.checked || undefined })} />Hide the component</label>
-									</div>
-								{/each}
-								{#if (sel.rules?.length ?? 0) < 8}
-									<button class="btn btn-sm btn-soft" onclick={addRule}><Icon name="plus" class="size-4" />Add a rule</button>
-								{/if}
 							{/if}
 							<button class="btn btn-sm btn-error btn-outline mt-auto" onclick={remove}><Icon name="close" class="size-4" />Remove</button>
 						{:else}

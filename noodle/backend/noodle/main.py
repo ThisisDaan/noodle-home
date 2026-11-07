@@ -563,7 +563,7 @@ def _clean_cards(raw) -> dict:
             if slot["component"] in ("value", "text") and slot.get("style") in CARD_STYLES:
                 item["style"] = slot["style"]
             if isinstance(slot.get("template"), str) and slot["template"]:
-                item["template"] = slot["template"][:200]
+                item["template"] = slot["template"][:1000]
             decimals = slot.get("decimals")
             if whole(decimals, 0, 6):
                 item["decimals"] = decimals
