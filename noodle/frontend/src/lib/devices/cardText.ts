@@ -56,12 +56,13 @@ export const fieldToken = (device: Device, f: Pick<Entity, 'key' | 'name'>) => `
 // ---- the template language -------------------------------------------------------------------------------------
 // Text with {values} in it, and blocks:   {if motion == true} Motion {:else if temp > 20} Warm {:else} Quiet {/if}
 // {color warning}, {icon motion} and {hide} (usually inside a block) style the component.
+// Inline: {color success}green words{/color}, {b}bold{/b}, {i}italic{/i}, {u}underlined{/u} style just the words between.
 // A condition can use: field keys, value, name, device, unit; numbers, 'text', true, false; == != > < >= <=; and or not ( ).
 
 type Val = string | number | boolean | undefined;
 type Expr = (get: (name: string) => Val) => Val;
 type IfNode = { t: 'if'; branches: { cond: Expr | null; kids: Node[] }[] };
-type Node = { t: 'text'; s: string } | { t: 'out'; s: string } | { t: 'set'; what: 'color' | 'icon' | 'hide'; arg: string } | IfNode;
+type Node = { t: 'text'; s: string } | { t: 'span'; what: 'color' | 'b' | 'i' | 'u'; arg: string; on: boolean } | { t: 'out'; s: string } | { t: 'set'; what: 'color' | 'icon' | 'hide'; arg: string } | IfNode;
 
 const YES = ['on', 'true', 'yes'];
 const NO = ['off', 'false', 'no'];
@@ -143,11 +144,22 @@ export function parseTemplate(src: string): { nodes: Node[]; error?: string } {
 	const cond = (code: string, what: string): Expr => {
 		try { return compile(code); } catch (e) { fail(`${what}: ${(e as Error).message}`); return () => false; }
 	};
+	// when the template closes a colour with {/color}, {color x} colours the words up to it instead of the whole component
+	const spanColors = /\{\/color\}/.test(src);
 	const re = /\{([^{}]*)\}/g;
 	let last = 0;
 	for (let m = re.exec(src); m; m = re.exec(src)) {
 		const body = m[1].trim();
 		const style = /^(color|icon)\s+\S+$|^hide$/.test(body);
+		const inline = /^\/?[biu]$|^\/color$/.exec(body) ?? (spanColors ? /^color\s+\S+$/.exec(body) : null);
+		if (inline) {
+			text(src.slice(last, m.index));
+			const on = !body.startsWith('/');
+			const [what, ...arg] = body.replace(/^\//, '').split(/\s+/);
+			stack[stack.length - 1].kids.push({ t: 'span', what: what as 'color' | 'b' | 'i' | 'u', arg: arg.join(' '), on });
+			last = re.lastIndex;
+			continue;
+		}
 		if (!style && !/^(if\b|:else\b|\/if$)/.test(body)) {
 			// a value: worked out when it is shown (one that is not known stays as typed)
 			text(src.slice(last, m.index));
@@ -187,7 +199,9 @@ export function parseTemplate(src: string): { nodes: Node[]; error?: string } {
 	return out;
 }
 
-export type Rendered = { text: string; color?: CardColor; icon?: string; hide: boolean; error?: string };
+/** A stretch of the text with its own look, when the template styles words ({color x}…{/color}, {b}…{/b}). */
+export type Part = { text: string; color?: CardColor; bold?: boolean; italic?: boolean; underline?: boolean };
+export type Rendered = { text: string; parts?: Part[]; color?: CardColor; icon?: string; hide: boolean; error?: string };
 
 /** The template with the device's values in it. */
 export function renderTemplate(template: string, device: Device, e: Entity | undefined, slot: CardSlot, now: number): Rendered {
@@ -216,11 +230,22 @@ export function renderTemplate(template: string, device: Device, e: Entity | und
 		return f ? shown(f) : null;
 	}
 	const res: Rendered = { text: '', hide: false, error };
+	const parts: Part[] = [];
+	const open: { what: string; arg: string }[] = [];
+	const add = (t: string) => {
+		if (!t) return;
+		const color = [...open].reverse().find((o) => o.what === 'color' && o.arg in COLORS)?.arg as CardColor | undefined;
+		parts.push({ text: t, ...(color ? { color } : {}), ...(open.some((o) => o.what === 'b') ? { bold: true } : {}), ...(open.some((o) => o.what === 'i') ? { italic: true } : {}), ...(open.some((o) => o.what === 'u') ? { underline: true } : {}) });
+	};
 	function run(list: Node[]) {
+		const depth = open.length; // a style left open ends with its block
 		for (const n of list) {
-			if (n.t === 'text') res.text += n.s;
-			else if (n.t === 'out') res.text += out(n.s) ?? `{${n.s}}`;
-			else if (n.t === 'set') {
+			if (n.t === 'text') add(n.s);
+			else if (n.t === 'out') add(out(n.s) ?? `{${n.s}}`);
+			else if (n.t === 'span') {
+				if (n.on) open.push({ what: n.what, arg: n.arg });
+				else { const i = open.map((o) => o.what).lastIndexOf(n.what); if (i >= 0) open.splice(i, 1); }
+			} else if (n.t === 'set') {
 				if (n.what === 'hide') res.hide = true;
 				else if (n.what === 'color' && n.arg in COLORS) res.color = n.arg as CardColor;
 				else if (n.what === 'icon') res.icon = n.arg;
@@ -231,9 +256,14 @@ export function renderTemplate(template: string, device: Device, e: Entity | und
 				if (b) run(b.kids);
 			}
 		}
+		open.length = depth;
 	}
 	run(nodes);
-	res.text = res.text.trim();
+	if (parts.length) parts[0].text = parts[0].text.trimStart();
+	if (parts.length) parts[parts.length - 1].text = parts[parts.length - 1].text.trimEnd();
+	const visible = parts.filter((p) => p.text);
+	res.text = visible.map((p) => p.text).join('');
+	if (visible.some((p) => p.color || p.bold || p.italic || p.underline)) res.parts = visible;
 	return res;
 }
 
@@ -269,6 +299,8 @@ export function rulesToTemplate(slot: CardSlot, device: Device): string {
 }
 
 export type Shown = {
+	/** the text in stretches of their own look, when the template styles words */
+	parts?: Part[];
 	/** the text to show instead of the field's own; undefined: show the field as usual */
 	text?: string;
 	color?: CardColor;
@@ -286,6 +318,7 @@ export function resolve(slot: CardSlot, device: Device, now: number): Shown {
 	const r = source !== undefined ? renderTemplate(source, device, e, slot, now) : undefined;
 	return {
 		text: r?.text,
+		parts: rule ? undefined : r?.parts,
 		color: rule?.then.color ?? r?.color ?? slot.color,
 		icon: rule?.then.icon ?? r?.icon,
 		hide: !!rule?.then.hide || !!r?.hide,

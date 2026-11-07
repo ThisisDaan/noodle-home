@@ -80,17 +80,19 @@
 	const size = (long: boolean) => (style === 'text-l' ? (long ? 'text-base' : 'text-2xl') : style === 'text-m' ? 'text-lg' : 'text-sm');
 </script>
 
+{#snippet rich(fallback: string)}{#if res.parts}{#each res.parts as p, i (i)}<span class="{p.color ? COLORS[p.color].text : ''} {p.bold ? 'font-black' : ''} {p.italic ? 'italic' : ''} {p.underline ? 'underline' : ''}">{p.text}</span>{/each}{:else}{fallback}{/if}{/snippet}
+
 <div class="size-full {deco}" class:opacity-30={res.hide} class:hidden={res.hide && !preview}>
 	{#if slot.component === 'text'}
 		{#if style === 'chip'}
 			<div class="rounded-box flex h-full min-w-0 items-center justify-center gap-2 px-3 {tint || 'bg-base-content/5'} {textColor}">
 				{#if res.icon}<Icon name={res.icon} class="size-5 shrink-0" />{/if}
-				<span class="truncate {weight}">{text}</span>
+				<span class="truncate {weight}">{@render rich(text)}</span>
 			</div>
 		{:else}
 			<div class="flex h-full min-w-0 flex-col justify-center {align} {textColor}">
 				<span class="flex max-w-full items-center gap-1.5 leading-tight {weight} {size(false) === 'text-2xl' ? 'text-3xl' : size(false)}">
-					{#if res.icon}<Icon name={res.icon} class="size-5 shrink-0" />{/if}<span class="truncate">{res.text ?? slot.template ?? 'Label'}</span>
+					{#if res.icon}<Icon name={res.icon} class="size-5 shrink-0" />{/if}<span class="truncate">{@render rich(res.text ?? slot.template ?? 'Label')}</span>
 				</span>
 			</div>
 		{/if}
@@ -108,7 +110,7 @@
 			<div class="bg-base-content/10 rounded-box relative h-full min-w-0 overflow-hidden {textColor}" class:opacity-50={!device.available}>
 				<span class="absolute inset-0 transition-opacity {tint || 'bg-warning/50'}" class:opacity-0={!res.color && !isOn(device)}></span>
 				<span class="absolute inset-0 flex items-center justify-center gap-2 truncate px-2 {weight} tabular-nums">
-					{#if res.icon}<Icon name={res.icon} class="size-5 shrink-0" />{/if}{labelled && res.text === undefined ? `${name} ` : ''}{res.text ?? (typeof entity.state === 'number' ? valueText(entity, slot) : formatState(entity))}
+					{#if res.icon}<Icon name={res.icon} class="size-5 shrink-0" />{/if}{labelled && res.text === undefined ? `${name} ` : ''}{@render rich(res.text ?? (typeof entity.state === 'number' ? valueText(entity, slot) : formatState(entity)))}
 				</span>
 			</div>
 		{:else if style === 'chip' || style === 'icon'}
@@ -124,7 +126,7 @@
 				{:else}
 					<Icon name={isContact(entity) ? 'door' : 'bulb'} class="size-5 shrink-0 {active ? '' : 'opacity-40'}" />
 				{/if}
-				{#if style === 'chip'}<span class="truncate {slot.bold === false ? 'font-normal' : slot.bold ? 'font-extrabold' : 'font-semibold'}">{labelled && res.text === undefined ? `${name}: ` : ''}{res.text ?? (typeof entity.state === 'number' ? valueText(entity, slot) : formatState(entity))}</span>{/if}
+				{#if style === 'chip'}<span class="truncate {slot.bold === false ? 'font-normal' : slot.bold ? 'font-extrabold' : 'font-semibold'}">{labelled && res.text === undefined ? `${name}: ` : ''}{@render rich(res.text ?? (typeof entity.state === 'number' ? valueText(entity, slot) : formatState(entity)))}</span>{/if}
 			</div>
 		{:else if style === 'gauge'}
 			<div class="relative grid h-full min-w-0 place-items-center {textColor}" class:opacity-50={!device.available}>
@@ -135,7 +137,7 @@
 				</svg>
 				<span class="relative flex max-w-[70%] flex-col items-center leading-none">
 					{#if res.text !== undefined}
-						<span class="truncate text-center text-xs {weight}">{res.text}</span>
+						<span class="truncate text-center text-xs {weight}">{@render rich(res.text)}</span>
 					{:else}
 						<span class="{weight} tabular-nums">{shown(num)}<span class="text-xs font-medium opacity-60">{unitOf(entity, slot)}</span></span>
 					{/if}
@@ -145,7 +147,7 @@
 		{:else if style === 'bar'}
 			<div class="bg-base-content/10 rounded-box relative h-full min-w-0 overflow-hidden" class:opacity-50={!device.available}>
 				<div class="absolute inset-y-0 left-0 transition-[width] {tint ? tint.split(' ')[0] : 'bg-primary/50'}" style="width: {fill}%"></div>
-				<span class="absolute inset-0 grid place-items-center truncate px-2 text-sm {weight} tabular-nums {textColor}">{labelled && res.text === undefined ? `${name} ` : ''}{res.text ?? `${shown(num)}${unit}`}</span>
+				<span class="absolute inset-0 grid place-items-center truncate px-2 text-sm {weight} tabular-nums {textColor}">{labelled && res.text === undefined ? `${name} ` : ''}{@render rich(res.text ?? `${shown(num)}${unit}`)}</span>
 			</div>
 		{:else}
 			<div class="flex h-full min-w-0 flex-col justify-center {align} {textColor}" class:opacity-50={!device.available || entity.state == null}>
@@ -154,7 +156,7 @@
 					<span class="max-w-full truncate leading-none tracking-tight tabular-nums {weight} {style === 'text-l' ? 'text-4xl' : style === 'text-m' ? 'text-xl' : 'text-sm'}">{labelled && style === 'text-s' ? `${name} ` : ''}{shown(entity.state)}<span class="ml-0.5 font-medium opacity-60 {style === 'text-l' ? 'text-xl' : 'text-[0.8em]'}">{unitOf(entity, slot)}</span></span>
 				{:else}
 					<span class="flex max-w-full items-center gap-1.5 leading-tight {weight} {size(text.length >= 10)}">
-						{#if res.icon}<Icon name={res.icon} class="size-5 shrink-0" />{/if}<span class="truncate">{labelled && style === 'text-s' && res.text === undefined ? `${name}: ` : ''}{text}</span>
+						{#if res.icon}<Icon name={res.icon} class="size-5 shrink-0" />{/if}<span class="truncate">{labelled && style === 'text-s' && res.text === undefined ? `${name}: ` : ''}{@render rich(text)}</span>
 					</span>
 				{/if}
 			</div>

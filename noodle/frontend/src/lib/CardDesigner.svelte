@@ -117,6 +117,23 @@
 		const at = from + snippet.length;
 		queueMicrotask(() => { area?.focus(); area?.setSelectionRange(at, at); });
 	}
+	/** put the selected text of the box between two tags (nothing selected: an empty pair, the cursor inside) */
+	function wrap(open: string, close: string) {
+		if (!sel) return;
+		const text = sel.template ?? '';
+		const from = area?.selectionStart ?? text.length, to = area?.selectionEnd ?? text.length;
+		patch({ template: (text.slice(0, from) + open + text.slice(from, to) + close + text.slice(to)).slice(0, 1000) });
+		const at = from + open.length, end = to + open.length;
+		queueMicrotask(() => { area?.focus(); area?.setSelectionRange(at, end); });
+	}
+	/** take a colour off the selected text: its {color …} and {/color} go */
+	function unwrapColor() {
+		if (!sel?.template) return;
+		const from = area?.selectionStart ?? 0, to = area?.selectionEnd ?? sel.template.length;
+		const t = sel.template;
+		const mid = t.slice(from, to).replace(/\{color [^{}]*\}|\{\/color\}/g, '');
+		patch({ template: t.slice(0, from) + mid + t.slice(to) });
+	}
 	/** an if / else block for a field, ready to fill in */
 	function ifBlock(key: string): string {
 		const f = device?.entities.find((x) => x.key === key);
@@ -322,6 +339,14 @@
 										{/each}
 									</div>
 								</div>
+								{#if sel.style && !STYLES[sel.style].plain}
+									<div class="flex flex-wrap items-center gap-1.5 text-xs font-medium opacity-80" role="group" aria-label="Colour">Colour
+										<button class="btn btn-xs btn-circle btn-outline" class:btn-active={!sel.color} aria-label="Default colour" onclick={() => patch({ color: undefined })}><Icon name="close" class="size-3" /></button>
+										{#each Object.keys(COLORS) as c (c)}
+											<button class="size-5 rounded-full border-2 {COLORS[c as CardColor].dot} {sel.color === c ? 'border-base-content' : 'border-transparent'}" aria-label={c} aria-pressed={sel.color === c} onclick={() => patch({ color: c as CardColor })}></button>
+										{/each}
+									</div>
+								{/if}
 								{#if sel.style && STYLES[sel.style].graph}
 									<label class="flex flex-col gap-1 text-xs font-medium opacity-80">History
 										<select class="select select-sm w-full" value={sel.hours ?? 6} onchange={(e) => patch({ hours: Number(e.currentTarget.value) })}>
@@ -346,9 +371,9 @@
 											</optgroup>
 										</select>
 										<span class="bg-base-content/15 mx-0.5 h-5 w-px"></span>
-										<button class="btn btn-xs btn-square" class:btn-primary={sel.bold !== false} aria-pressed={sel.bold !== false} aria-label="Bold" title="Bold" onclick={() => patch({ bold: sel.bold === false ? undefined : false })}><b>B</b></button>
-										<button class="btn btn-xs btn-square" class:btn-primary={sel.italic} aria-pressed={!!sel.italic} aria-label="Italic" title="Italic" onclick={() => patch({ italic: sel.italic ? undefined : true })}><i>I</i></button>
-										<button class="btn btn-xs btn-square" class:btn-primary={sel.underline} aria-pressed={!!sel.underline} aria-label="Underline" title="Underline" onclick={() => patch({ underline: sel.underline ? undefined : true })}><u>U</u></button>
+										<button class="btn btn-xs btn-square" aria-label="Bold" title="Bold the selected text" onclick={() => wrap('{b}', '{/b}')}><b>B</b></button>
+										<button class="btn btn-xs btn-square" aria-label="Italic" title="Italic the selected text" onclick={() => wrap('{i}', '{/i}')}><i>I</i></button>
+										<button class="btn btn-xs btn-square" aria-label="Underline" title="Underline the selected text" onclick={() => wrap('{u}', '{/u}')}><u>U</u></button>
 										<span class="bg-base-content/15 mx-0.5 h-5 w-px"></span>
 										<div class="join">
 											{#each [['left', 'M2 3h12M2 7h8M2 11h12'], ['center', 'M2 3h12M4 7h8M2 11h12'], ['right', 'M2 3h12M6 7h8M2 11h12']] as [a, path] (a)}
@@ -359,12 +384,12 @@
 										</div>
 										<details class="dropdown">
 											<summary class="btn btn-xs gap-1 px-1.5" aria-label="Text colour" title="Text colour">
-												<span class="size-3.5 rounded-full border border-base-content/30 {sel.color ? COLORS[sel.color].dot : 'bg-base-content'}"></span><span class="text-[10px]">▾</span></summary>
+												<span class="font-bold underline decoration-primary decoration-2">A</span><span class="text-[10px]">▾</span></summary>
 											<div class="dropdown-content bg-base-100 rounded-box z-10 mt-1 flex w-44 flex-wrap gap-1.5 p-2 shadow-lg" role="group" aria-label="Colour">
-												<button class="btn btn-xs btn-circle btn-outline" class:btn-active={!sel.color} aria-label="Default colour" onclick={(e) => { patch({ color: undefined }); e.currentTarget.closest('details')?.removeAttribute('open'); }}><Icon name="close" class="size-3" /></button>
+												<button class="btn btn-xs btn-circle btn-outline" aria-label="No colour" title="Remove colour from the selected text" onclick={(e) => { unwrapColor(); e.currentTarget.closest('details')?.removeAttribute('open'); }}><Icon name="close" class="size-3" /></button>
 												{#each Object.keys(COLORS) as c (c)}
-													<button class="size-6 rounded-full border-2 {COLORS[c as CardColor].dot} {sel.color === c ? 'border-base-content' : 'border-transparent'}" aria-label={c} aria-pressed={sel.color === c}
-														onclick={(e) => { patch({ color: c as CardColor }); e.currentTarget.closest('details')?.removeAttribute('open'); }}></button>
+													<button class="size-6 rounded-full border-2 {COLORS[c as CardColor].dot} border-transparent" aria-label={c} title="Colour the selected text {c}"
+														onclick={(e) => { wrap(`{color ${c}}`, '{/color}'); e.currentTarget.closest('details')?.removeAttribute('open'); }}></button>
 												{/each}
 											</div>
 										</details>
@@ -376,13 +401,13 @@
 									<details class="mt-1 font-normal opacity-80">
 										<summary class="cursor-pointer">How to write it</summary>
 										<pre class="bg-base-200 rounded-box mt-1 p-2 text-[11px] leading-snug whitespace-pre-wrap">{`{if device.motion == true}
-  {color warning}Motion detected
+  {color success}Motion detected{/color}
 {:else if device.temp > 25}
-  Warm: {device.temp}
+  Warm: {b}{device.temp}{/b}
 {:else}
-  No motion
+  {color error}No motion{/color}
 {/if}`}</pre>
-										<p class="mt-1">Values in braces: <code>{'{value}'}</code> (this component's field), <code>{'{device.name}'}</code> or any field of the device, like <code>{'{device.occupancy}'}</code>. Conditions: == != &gt; &lt; &gt;= &lt;= and or not. Style a block with <code>{'{color …}'}</code> (primary, success, warning, error, info…), <code>{'{icon …}'}</code> or <code>{'{hide}'}</code>.</p>
+										<p class="mt-1">Values in braces: <code>{'{value}'}</code> (this component's field), <code>{'{device.name}'}</code> or any field of the device, like <code>{'{device.occupancy}'}</code>. Conditions: == != &gt; &lt; &gt;= &lt;= and or not. Style words with <code>{'{color success}…{/color}'}</code> (primary, success, warning, error, info…), <code>{'{b}…{/b}'}</code>, <code>{'{i}…{/i}'}</code>, <code>{'{u}…{/u}'}</code>: select text and use the toolbar. <code>{'{icon …}'}</code> and <code>{'{hide}'}</code> style the whole component.</p>
 									</details>
 								</div>
 								{#if sel.rules?.length}
