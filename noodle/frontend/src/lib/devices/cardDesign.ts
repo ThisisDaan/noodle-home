@@ -20,7 +20,7 @@ export type CardSlot = {
 	/** number format */
 	decimals?: number; unit?: string; thousands?: boolean;
 	/** text style */
-	bold?: boolean; align?: 'left' | 'center' | 'right'; color?: CardColor;
+	bold?: boolean; italic?: boolean; underline?: boolean; align?: 'left' | 'center' | 'right'; color?: CardColor;
 	rules?: CardRule[];
 };
 export type CardDesign = { w: number; h: number; slots: CardSlot[] };

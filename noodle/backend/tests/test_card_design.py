@@ -90,3 +90,13 @@ def test_text_format_and_rules_are_kept_when_they_make_sense():
     assert first["rules"][0] == {"field": "presence", "op": "is", "value": "on", "then": {"text": "Home", "color": "success", "icon": "home"}}
     assert clean[1]["component"] == "text" and clean[1]["key"] == "" and clean[1]["style"] == "text-m"
     assert main._clean_cards({"d": {"w": 2, "h": 2, "slots": clean}}) == {"d": {"w": 2, "h": 2, "slots": clean}}  # stable
+
+
+def test_text_looks_italic_underline_and_plain_weight():
+    design = {"d": {"w": 2, "h": 1, "slots": [
+        slot(0, 0, 4, 2, "text", None, template="Hi", italic=True, underline=True, bold=False),
+        slot(4, 0, 4, 2, "text", None, template="Yo", italic=False, underline="yes", bold="no")]}}
+    clean = main._clean_cards(design)["d"]["slots"]
+    assert clean[0]["italic"] and clean[0]["underline"] and clean[0]["bold"] is False
+    assert not {"italic", "underline", "bold"} & clean[1].keys()
+    assert main._clean_cards({"d": {"w": 2, "h": 1, "slots": clean}})["d"]["slots"] == clean

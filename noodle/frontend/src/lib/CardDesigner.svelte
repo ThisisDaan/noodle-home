@@ -64,7 +64,6 @@
 	const entity = $derived(sel ? device?.entities.find((e) => e.key === sel.key) : undefined);
 	const fields = $derived(sel && device ? device.entities.filter((e) => compatible(sel.component, e)) : []);
 	const styles = $derived<CardStyle[]>(entity ? stylesFor(entity) : sel?.component === 'text' ? ['text-s', 'text-m', 'text-l', 'chip'] : []);
-	let tab = $state<'content' | 'format'>('content');
 	let area = $state<HTMLTextAreaElement>();
 	/** a mistake in the selected component's template */
 	const templateError = $derived(sel?.template && device ? resolve(sel, device, 0).error : undefined);
@@ -307,114 +306,111 @@
 <section class="flex min-h-72 flex-col gap-3">
 						<h3 class="text-sm font-semibold">{sel ? (sel.component === 'value' ? 'Reading' : COMPONENTS[sel.component].label) : 'Selected'}</h3>
 						{#if sel && (entity || sel.component === 'text')}
-							<div class="tabs tabs-box tabs-sm" role="tablist">
-								{#each [['content', 'Content'], ['format', 'Format']] as [id, label] (id)}
-									<button role="tab" class="tab" class:tab-active={tab === id} onclick={() => (tab = id as typeof tab)}>{label}</button>
-								{/each}
-							</div>
-
-							{#if tab === 'content'}
-								{#if sel.component !== 'text'}
-									<label class="flex flex-col gap-1 text-xs font-medium opacity-80">Shows
-										<select class="select select-sm w-full" value={sel.key} onchange={(e) => setField(e.currentTarget.value)}>
-											{#each fields as f (f.key)}<option value={f.key}>{f.name}</option>{/each}
+							{#if sel.component !== 'text'}
+								<label class="flex flex-col gap-1 text-xs font-medium opacity-80">Shows
+									<select class="select select-sm w-full" value={sel.key} onchange={(e) => setField(e.currentTarget.value)}>
+										{#each fields as f (f.key)}<option value={f.key}>{f.name}</option>{/each}
+									</select>
+								</label>
+							{/if}
+							{#if sel.component === 'value' || sel.component === 'text'}
+								<div class="flex flex-col gap-1 text-xs font-medium opacity-80">Looks like
+									<div class="grid grid-cols-3 gap-1.5">
+										{#each styles as st (st)}
+											<button class="btn btn-soft h-auto flex-col gap-0.5 px-1 py-1.5 text-xs" class:btn-primary={sel.style === st} aria-pressed={sel.style === st} onclick={() => setStyle(st)}>
+												<LookPreview look={st} class="h-7 w-full" />{STYLES[st].label}</button>
+										{/each}
+									</div>
+								</div>
+								{#if sel.style && STYLES[sel.style].graph}
+									<label class="flex flex-col gap-1 text-xs font-medium opacity-80">History
+										<select class="select select-sm w-full" value={sel.hours ?? 6} onchange={(e) => patch({ hours: Number(e.currentTarget.value) })}>
+											{#each HOURS as h (h)}<option value={h}>Last {hoursLabel(h)}</option>{/each}
 										</select>
 									</label>
 								{/if}
-								{#if sel.component === 'value' || sel.component === 'text'}
-									<div class="flex flex-col gap-1 text-xs font-medium opacity-80">Looks like
-											<div class="grid grid-cols-3 gap-1.5">
-												{#each styles as st (st)}
-													<button class="btn btn-soft h-auto flex-col gap-0.5 px-1 py-1.5 text-xs" class:btn-primary={sel.style === st} aria-pressed={sel.style === st} onclick={() => setStyle(st)}>
-														<LookPreview look={st} class="h-7 w-full" />{STYLES[st].label}</button>
-												{/each}
-											</div>
+
+								<div class="flex flex-col text-xs font-medium opacity-80">Value shown
+									<!-- the toolbar, like an editor's: insert things, and style the text -->
+									<div class="bg-base-200 rounded-t-box border-base-content/15 mt-1 flex flex-wrap items-center gap-1 border border-b-0 p-1" role="toolbar" aria-label="Insert and style">
+										<select class="select select-xs w-28" value="" onchange={(e) => { insert(e.currentTarget.value); e.currentTarget.value = ''; }} aria-label="Insert a value">
+											<option value="">Insert value</option>
+											<optgroup label="This component">{#each TOKENS as t (t.token)}<option value={t.token}>{t.label}</option>{/each}</optgroup>
+											<optgroup label="Fields of the device">{#each device.entities as f (f.key)}<option value={fieldToken(device, f)}>{f.name}</option>{/each}</optgroup>
+										</select>
+										<select class="select select-xs w-28" value="" onchange={(e) => { const v = e.currentTarget.value; insert(v.startsWith('if:') ? ifBlock(v.slice(3)) : v); e.currentTarget.value = ''; }} aria-label="Insert a block">
+											<option value="">Insert block</option>
+											<optgroup label="If / else, on a field">{#each device.entities as f (f.key)}<option value={`if:${f.key}`}>if {f.name}</option>{/each}</optgroup>
+											<optgroup label="Style">
+												<option value={'{color success}'}>colour…</option><option value={'{icon motion}'}>icon…</option><option value={'{hide}'}>hide</option>
+											</optgroup>
+										</select>
+										<span class="bg-base-content/15 mx-0.5 h-5 w-px"></span>
+										<button class="btn btn-xs btn-square" class:btn-primary={sel.bold !== false} aria-pressed={sel.bold !== false} aria-label="Bold" title="Bold" onclick={() => patch({ bold: sel.bold === false ? undefined : false })}><b>B</b></button>
+										<button class="btn btn-xs btn-square" class:btn-primary={sel.italic} aria-pressed={!!sel.italic} aria-label="Italic" title="Italic" onclick={() => patch({ italic: sel.italic ? undefined : true })}><i>I</i></button>
+										<button class="btn btn-xs btn-square" class:btn-primary={sel.underline} aria-pressed={!!sel.underline} aria-label="Underline" title="Underline" onclick={() => patch({ underline: sel.underline ? undefined : true })}><u>U</u></button>
+										<span class="bg-base-content/15 mx-0.5 h-5 w-px"></span>
+										<div class="join">
+											{#each [['left', 'M2 3h12M2 7h8M2 11h12'], ['center', 'M2 3h12M4 7h8M2 11h12'], ['right', 'M2 3h12M6 7h8M2 11h12']] as [a, path] (a)}
+												<button class="btn btn-xs join-item btn-square" class:btn-primary={(sel.align ?? 'left') === a} aria-pressed={(sel.align ?? 'left') === a} aria-label="Align {a}" title="Align {a}"
+													onclick={() => patch({ align: a === 'left' ? undefined : (a as 'center' | 'right') })}>
+													<svg viewBox="0 0 16 14" class="size-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d={path} /></svg></button>
+											{/each}
 										</div>
-										{#if sel.style && STYLES[sel.style].graph}
-										<label class="flex flex-col gap-1 text-xs font-medium opacity-80">History
-											<select class="select select-sm w-full" value={sel.hours ?? 6} onchange={(e) => patch({ hours: Number(e.currentTarget.value) })}>
-												{#each HOURS as h (h)}<option value={h}>Last {hoursLabel(h)}</option>{/each}
-											</select>
-										</label>
-											<div class="flex flex-wrap items-center gap-1.5 text-xs font-medium opacity-80" role="group" aria-label="Colour">Colour
-												<button class="btn btn-xs btn-circle btn-outline" class:btn-active={!sel.color} aria-label="Default colour" onclick={() => patch({ color: undefined })}><Icon name="close" class="size-3" /></button>
+										<details class="dropdown">
+											<summary class="btn btn-xs gap-1 px-1.5" aria-label="Text colour" title="Text colour">
+												<span class="size-3.5 rounded-full border border-base-content/30 {sel.color ? COLORS[sel.color].dot : 'bg-base-content'}"></span><span class="text-[10px]">▾</span></summary>
+											<div class="dropdown-content bg-base-100 rounded-box z-10 mt-1 flex w-44 flex-wrap gap-1.5 p-2 shadow-lg" role="group" aria-label="Colour">
+												<button class="btn btn-xs btn-circle btn-outline" class:btn-active={!sel.color} aria-label="Default colour" onclick={(e) => { patch({ color: undefined }); e.currentTarget.closest('details')?.removeAttribute('open'); }}><Icon name="close" class="size-3" /></button>
 												{#each Object.keys(COLORS) as c (c)}
-													<button class="size-5 rounded-full border-2 {COLORS[c as CardColor].dot} {sel.color === c ? 'border-base-content' : 'border-transparent'}" aria-label={c} aria-pressed={sel.color === c} onclick={() => patch({ color: c as CardColor })}></button>
+													<button class="size-6 rounded-full border-2 {COLORS[c as CardColor].dot} {sel.color === c ? 'border-base-content' : 'border-transparent'}" aria-label={c} aria-pressed={sel.color === c}
+														onclick={(e) => { patch({ color: c as CardColor }); e.currentTarget.closest('details')?.removeAttribute('open'); }}></button>
 												{/each}
 											</div>
-									{/if}
-									<div class="flex flex-col gap-1 text-xs font-medium opacity-80">Value shown
-										<textarea bind:this={area} class="textarea textarea-sm w-full font-mono text-xs leading-snug" rows="7" spellcheck="false" maxlength="1000"
-											value={sel.template ?? ''} placeholder={sel.component === 'text' ? 'Type your text' : 'Empty: the field as the device says it. Or write what to show, with {if …} blocks.'}
-											oninput={(e) => patch({ template: e.currentTarget.value || undefined })}></textarea>
-										{#if templateError}<span class="text-error font-normal" role="alert">{templateError}</span>{/if}
-										<div class="grid grid-cols-2 gap-1.5">
-											<select class="select select-xs w-full" value="" onchange={(e) => { insert(e.currentTarget.value); e.currentTarget.value = ''; }} aria-label="Insert a value">
-												<option value="">Insert a value…</option>
-												<optgroup label="This component">{#each TOKENS as t (t.token)}<option value={t.token}>{t.label}</option>{/each}</optgroup>
-												<optgroup label="Fields of the device">{#each device.entities as f (f.key)}<option value={fieldToken(device, f)}>{f.name}</option>{/each}</optgroup>
-											</select>
-											<select class="select select-xs w-full" value="" onchange={(e) => { const v = e.currentTarget.value; insert(v.startsWith('if:') ? ifBlock(v.slice(3)) : v); e.currentTarget.value = ''; }} aria-label="Insert a block">
-												<option value="">Insert a block…</option>
-												<optgroup label="If / else, on a field">{#each device.entities as f (f.key)}<option value={`if:${f.key}`}>if {f.name}</option>{/each}</optgroup>
-												<optgroup label="Style">
-													<option value={'{color success}'}>colour…</option><option value={'{icon motion}'}>icon…</option><option value={'{hide}'}>hide</option>
-												</optgroup>
-											</select>
-										</div>
-										<details class="font-normal opacity-80">
-											<summary class="cursor-pointer">How to write it</summary>
-											<pre class="bg-base-200 rounded-box mt-1 p-2 text-[11px] leading-snug whitespace-pre-wrap">{`{if device.motion == true}
+										</details>
+									</div>
+									<textarea bind:this={area} class="textarea textarea-sm rounded-t-none w-full font-mono text-xs leading-snug" rows="7" spellcheck="false" maxlength="1000"
+										value={sel.template ?? ''} placeholder={sel.component === 'text' ? 'Type your text' : 'Empty: the field as the device says it. Or write what to show, with {if …} blocks.'}
+										oninput={(e) => patch({ template: e.currentTarget.value || undefined })}></textarea>
+									{#if templateError}<span class="text-error mt-1 font-normal" role="alert">{templateError}</span>{/if}
+									<details class="mt-1 font-normal opacity-80">
+										<summary class="cursor-pointer">How to write it</summary>
+										<pre class="bg-base-200 rounded-box mt-1 p-2 text-[11px] leading-snug whitespace-pre-wrap">{`{if device.motion == true}
   {color warning}Motion detected
 {:else if device.temp > 25}
   Warm: {device.temp}
 {:else}
   No motion
 {/if}`}</pre>
-											<p class="mt-1">Values in braces: <code>{'{value}'}</code> (this component's field), <code>{'{device.name}'}</code> or any field of the device, like <code>{'{device.occupancy}'}</code>. Conditions: == != &gt; &lt; &gt;= &lt;= and or not. Style a block with <code>{'{color …}'}</code> (primary, success, warning, error, info…), <code>{'{icon …}'}</code> or <code>{'{hide}'}</code>.</p>
-										</details>
-									</div>
-									{#if sel.rules?.length}
-										<div class="bg-warning/15 rounded-box flex flex-col gap-2 p-2.5 text-xs font-normal">
-											This component still has {sel.rules.length} rule{sel.rules.length === 1 ? '' : 's'} from the old rules list. They work, but you can't edit them.
-											<button class="btn btn-xs btn-warning" onclick={convertRules}>Turn them into a template</button>
-										</div>
-									{/if}
-								{/if}
-								<label class="flex flex-col gap-1 text-xs font-medium opacity-80">Caption (optional)
-									<input class="input input-sm w-full" value={sel.label ?? ''} placeholder="None" maxlength="40" oninput={(e) => setLabel(e.currentTarget.value)} />
-								</label>
-							{:else if tab === 'format'}
-								{#if entity && typeof entity.state === 'number'}
-									<div class="flex flex-col gap-2 text-xs font-medium opacity-80">Number
-										<div class="grid grid-cols-2 gap-2">
-											<select class="select select-sm w-full" value={sel.decimals ?? ''} aria-label="Decimals" onchange={(e) => patch({ decimals: e.currentTarget.value === '' ? undefined : Number(e.currentTarget.value) })}>
-												<option value="">Decimals: auto</option>
-												{#each [0, 1, 2, 3, 4] as d (d)}<option value={d}>{d} decimals</option>{/each}
-											</select>
-											<input class="input input-sm w-full" value={sel.unit ?? ''} placeholder={entity.unit ? `Unit: ${entity.unit}` : 'Unit'} maxlength="10" aria-label="Unit"
-												oninput={(e) => patch({ unit: e.currentTarget.value === '' ? undefined : e.currentTarget.value })} />
-										</div>
-										<label class="flex items-center gap-2 font-normal"><input type="checkbox" class="checkbox checkbox-sm" checked={!!sel.thousands} onchange={(e) => patch({ thousands: e.currentTarget.checked || undefined })} />Thousands separator</label>
-									</div>
-								{/if}
-								<div class="flex flex-col gap-2 text-xs font-medium opacity-80">Text
-									<div class="flex flex-wrap items-center gap-2">
-										<button class="btn btn-xs" class:btn-primary={sel.bold} aria-pressed={!!sel.bold} onclick={() => patch({ bold: sel.bold ? undefined : true })}><b>B</b></button>
-										<div class="join">
-											{#each ['left', 'center', 'right'] as a (a)}
-												<button class="btn btn-xs join-item" class:btn-primary={(sel.align ?? 'left') === a} onclick={() => patch({ align: a === 'left' ? undefined : (a as 'center' | 'right') })}>{a}</button>
-											{/each}
-										</div>
-									</div>
-									<div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Colour">
-										<button class="btn btn-xs btn-circle btn-outline" class:btn-active={!sel.color} aria-label="No colour" onclick={() => patch({ color: undefined })}><Icon name="close" class="size-3" /></button>
-										{#each Object.keys(COLORS) as c (c)}
-											<button class="size-6 rounded-full border-2 {COLORS[c as CardColor].dot} {sel.color === c ? 'border-base-content' : 'border-transparent'}" aria-label={c} aria-pressed={sel.color === c} onclick={() => patch({ color: c as CardColor })}></button>
-										{/each}
-									</div>
+										<p class="mt-1">Values in braces: <code>{'{value}'}</code> (this component's field), <code>{'{device.name}'}</code> or any field of the device, like <code>{'{device.occupancy}'}</code>. Conditions: == != &gt; &lt; &gt;= &lt;= and or not. Style a block with <code>{'{color …}'}</code> (primary, success, warning, error, info…), <code>{'{icon …}'}</code> or <code>{'{hide}'}</code>.</p>
+									</details>
 								</div>
+								{#if sel.rules?.length}
+									<div class="bg-warning/15 rounded-box flex flex-col gap-2 p-2.5 text-xs font-normal">
+										This component still has {sel.rules.length} rule{sel.rules.length === 1 ? '' : 's'} from the old rules list. They work, but you can't edit them.
+										<button class="btn btn-xs btn-warning" onclick={convertRules}>Turn them into a template</button>
+									</div>
+								{/if}
+								{#if entity && typeof entity.state === 'number'}
+									<details class="text-xs font-medium opacity-80">
+										<summary class="cursor-pointer">Number format</summary>
+										<div class="mt-2 flex flex-col gap-2">
+											<div class="grid grid-cols-2 gap-2">
+												<select class="select select-sm w-full" value={sel.decimals ?? ''} aria-label="Decimals" onchange={(e) => patch({ decimals: e.currentTarget.value === '' ? undefined : Number(e.currentTarget.value) })}>
+													<option value="">Decimals: auto</option>
+													{#each [0, 1, 2, 3, 4] as d (d)}<option value={d}>{d} decimals</option>{/each}
+												</select>
+												<input class="input input-sm w-full" value={sel.unit ?? ''} placeholder={entity.unit ? `Unit: ${entity.unit}` : 'Unit'} maxlength="10" aria-label="Unit"
+													oninput={(e) => patch({ unit: e.currentTarget.value === '' ? undefined : e.currentTarget.value })} />
+											</div>
+											<label class="flex items-center gap-2 font-normal"><input type="checkbox" class="checkbox checkbox-sm" checked={!!sel.thousands} onchange={(e) => patch({ thousands: e.currentTarget.checked || undefined })} />Thousands separator</label>
+										</div>
+									</details>
+								{/if}
 							{/if}
+							<label class="flex flex-col gap-1 text-xs font-medium opacity-80">Caption (optional)
+								<input class="input input-sm w-full" value={sel.label ?? ''} placeholder="None" maxlength="40" oninput={(e) => setLabel(e.currentTarget.value)} />
+							</label>
 							<button class="btn btn-sm btn-error btn-outline mt-auto" onclick={remove}><Icon name="close" class="size-4" />Remove</button>
 						{:else}
 							<p class="text-sm opacity-60">Tap a component on the card to change what it shows and how. Drag it to move it, drag its edges to resize it. Arrow keys nudge it, Delete removes it.</p>

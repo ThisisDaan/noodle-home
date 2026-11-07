@@ -569,9 +569,11 @@ def _clean_cards(raw) -> dict:
                 item["decimals"] = decimals
             if isinstance(slot.get("unit"), str):
                 item["unit"] = slot["unit"][:10]
-            for flag in ("thousands", "bold"):
+            for flag in ("thousands", "bold", "italic", "underline"):
                 if slot.get(flag) is True:
                     item[flag] = True
+            if slot.get("bold") is False:  # plain weight, where bold is the look of a reading
+                item["bold"] = False
             if slot.get("align") in CARD_ALIGN:
                 item["align"] = slot["align"]
             if slot.get("color") in CARD_COLORS:

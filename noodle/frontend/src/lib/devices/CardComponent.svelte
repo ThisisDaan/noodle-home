@@ -72,14 +72,15 @@
 	const active = $derived(entity?.state === true && device.available);
 
 	// text style: weight, alignment and colour (a rule's colour wins)
-	const weight = $derived(slot.bold ? 'font-extrabold' : 'font-bold');
+	const weight = $derived(slot.bold === false ? 'font-normal' : slot.bold ? 'font-extrabold' : 'font-bold');
+	const deco = $derived(`${slot.italic ? 'italic ' : ''}${slot.underline ? 'underline' : ''}`);
 	const align = $derived({ left: 'items-start text-left', center: 'items-center text-center', right: 'items-end text-right' }[slot.align ?? 'left']);
 	const textColor = $derived(res.color ? COLORS[res.color].text : '');
 	const tint = $derived(res.color ? COLORS[res.color].tint : '');
 	const size = (long: boolean) => (style === 'text-l' ? (long ? 'text-base' : 'text-2xl') : style === 'text-m' ? 'text-lg' : 'text-sm');
 </script>
 
-<div class="size-full" class:opacity-30={res.hide} class:hidden={res.hide && !preview}>
+<div class="size-full {deco}" class:opacity-30={res.hide} class:hidden={res.hide && !preview}>
 	{#if slot.component === 'text'}
 		{#if style === 'chip'}
 			<div class="rounded-box flex h-full min-w-0 items-center justify-center gap-2 px-3 {tint || 'bg-base-content/5'} {textColor}">
@@ -123,7 +124,7 @@
 				{:else}
 					<Icon name={isContact(entity) ? 'door' : 'bulb'} class="size-5 shrink-0 {active ? '' : 'opacity-40'}" />
 				{/if}
-				{#if style === 'chip'}<span class="truncate {slot.bold ? 'font-extrabold' : 'font-semibold'}">{labelled && res.text === undefined ? `${name}: ` : ''}{res.text ?? (typeof entity.state === 'number' ? valueText(entity, slot) : formatState(entity))}</span>{/if}
+				{#if style === 'chip'}<span class="truncate {slot.bold === false ? 'font-normal' : slot.bold ? 'font-extrabold' : 'font-semibold'}">{labelled && res.text === undefined ? `${name}: ` : ''}{res.text ?? (typeof entity.state === 'number' ? valueText(entity, slot) : formatState(entity))}</span>{/if}
 			</div>
 		{:else if style === 'gauge'}
 			<div class="relative grid h-full min-w-0 place-items-center {textColor}" class:opacity-50={!device.available}>
