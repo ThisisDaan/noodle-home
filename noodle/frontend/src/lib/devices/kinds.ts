@@ -15,6 +15,10 @@ export const isTemperature = (e: Entity) => e.kind === 'sensor' && e.device_clas
 export const isHumidity = (e: Entity) => e.kind === 'sensor' && e.device_class === 'humidity';
 export const isPower = (e: Entity) => e.kind === 'sensor' && e.device_class === 'power';
 
+/** What the kinds are called when several are meant ("Apply to all motion sensors"). */
+export const kindName = (k: DeviceKind) =>
+	({ light: 'lights', switch: 'switches', button: 'remotes', motion: 'motion sensors', contact: 'door sensors', climate: 'climate sensors', thermostat: 'thermostats', generic: 'other devices' })[k];
+
 export function deviceKind(d: Device): DeviceKind {
 	const has = (...kinds: Entity['kind'][]) => d.entities.some((e) => kinds.includes(e.kind));
 	if (has('light')) return 'light';
@@ -44,3 +48,12 @@ export function faceEntities(d: Device): Entity[] {
 
 /** Kinds that get a large face at the top of the device sheet. */
 export const sheetFace = (d: Device) => ['climate', 'motion', 'contact'].includes(deviceKind(d));
+
+/** The fields a template can use: the device's own, plus a light's brightness (0 to 100, 0 when off) as a field of its
+ * own, so `{if device.brightness > 50}` works. */
+export function fieldsOf(device: Device): Entity[] {
+	if (device.entities.some((x) => x.key === 'brightness')) return device.entities;
+	const light = device.entities.find((x) => x.kind === 'light' && x.brightness !== null && x.brightness !== undefined);
+	if (!light) return device.entities;
+	return [...device.entities, { ...light, key: 'brightness', name: 'Brightness', kind: 'number', state: light.state === true ? light.brightness : 0, unit: '%', attrs: {}, actions: null } as Entity];
+}

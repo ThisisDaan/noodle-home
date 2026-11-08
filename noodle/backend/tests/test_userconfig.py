@@ -137,14 +137,14 @@ def test_dashboard_layout_is_a_file(tmp_path, monkeypatch):
     from noodle import main
     monkeypatch.setattr(main, "dashboard", YamlFile(tmp_path / "dashboard.yaml"))
     assert main.get_layout() == {"rooms": [], "hidden": [], "favorites": [], "order": [], "widgets": None,
-                                 "devices_view": {"group_by": "room", "sort": "name"}, "cards": {}}
+                                 "devices_view": {"group_by": "room", "sort": "name"}, "cards": {}, "card_defaults": {}}
     main.put_layout(main.LayoutBody(rooms=["Kitchen", "Hall"], favorites=["zigbee:1"]))
     assert "rooms: [Kitchen, Hall]" in (tmp_path / "dashboard.yaml").read_text()
     assert not main.dashboard.changed()
     (tmp_path / "dashboard.yaml").write_text("rooms: [Hall]\nhidden: [zigbee:9]\n")
     assert main.dashboard.changed()
     assert main._read_layout() == {"rooms": ["Hall"], "hidden": ["zigbee:9"], "favorites": [], "order": [], "widgets": None,
-                                   "devices_view": {"group_by": "room", "sort": "name"}, "cards": {}}
+                                   "devices_view": {"group_by": "room", "sort": "name"}, "cards": {}, "card_defaults": {}}
 
 
 def test_changed_settings_restart_only_their_integration(monkeypatch):

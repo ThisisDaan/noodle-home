@@ -1,30 +1,27 @@
 <script lang="ts">
 	import type { Device, Entity } from '../api.ts';
 	import { History } from '../history.svelte.ts';
+	import { linePath } from './graphPath.ts';
 	import { valueText } from './cardText.ts';
 	import type { CardSlot } from './cardDesign.ts';
 
 	/** A card component that draws the last hours of a number: a line, bars (the average of each stretch of time)
 	 * or a small sparkline next to the current value. It fills the box it is given. */
-	let { device, entity, slot, name, labelled = false, text: custom, color = '' }: { device: Device; entity: Entity; slot: CardSlot; name: string; labelled?: boolean; text?: string; color?: string } = $props();
+	let { device, entity, slot, name, hours: span, fieldKey, labelled = false, text: custom, color = '', colorStyle = '' }: { device: Device; entity: Entity; slot: CardSlot; name: string; hours?: number; fieldKey?: string; labelled?: boolean; text?: string; color?: string; colorStyle?: string } = $props();
 
-	const hours = $derived(slot.hours ?? 6);
-	const history = new History(() => ({ device_id: device.id, key: slot.key, hours }));
+	const hours = $derived(span ?? slot.hours ?? 5);
+	const history = new History(() => ({ device_id: device.id, key: fieldKey ?? slot.key, hours }));
 	const points = $derived(history.points);
 
 	const W = 100, H = 40, PAD = 2, BUCKETS = 24;
 	const range = $derived.by(() => {
 		if (!points.length) return { min: 0, max: 1 };
 		const values = points.map((p) => p.value);
-		const min = Math.min(...values), max = Math.max(...values);
+		const min = history.steps ? Math.min(0, ...values) : Math.min(...values), max = Math.max(...values);
 		return { min, max: max === min ? min + 1 : max };
 	});
 	const y = (v: number) => H - PAD - ((v - range.min) / (range.max - range.min)) * (H - 2 * PAD);
-	const line = $derived.by(() => {
-		if (points.length < 2) return '';
-		const t0 = points[0].ts, t1 = points[points.length - 1].ts;
-		return points.map((p, i) => `${i ? 'L' : 'M'}${(PAD + ((p.ts - t0) / (t1 - t0 || 1)) * (W - 2 * PAD)).toFixed(2)} ${y(p.value).toFixed(2)}`).join(' ');
-	});
+	const line = $derived(linePath(points, history.steps, W, PAD, y));
 	const area = $derived(line ? `${line} L${W - PAD} ${H} L${PAD} ${H} Z` : '');
 	const bars = $derived.by(() => {
 		const end = Date.now() / 1000, span = (hours * 3600) / BUCKETS;
@@ -46,11 +43,11 @@
 			{#if labelled}<span class="max-w-24 truncate text-xs leading-none opacity-70">{name}</span>{/if}
 			<span class="text-lg leading-tight font-bold tabular-nums">{text}</span>
 		</div>
-		<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="{color || 'text-primary'} min-w-0 grow p-1.5" role="img" aria-label="{name}, last {hours} hours">
+		<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="{color || 'text-primary'} min-w-0 grow p-1.5" style={colorStyle || undefined} role="img" aria-label="{name}, last {hours} hours">
 			<path d={line} fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
 		</svg>
 	{:else}
-		<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="{color || 'text-primary'} absolute inset-0 size-full" role="img" aria-label="{name}, last {hours} hours">
+		<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="{color || 'text-primary'} absolute inset-0 size-full" style={colorStyle || undefined} role="img" aria-label="{name}, last {hours} hours">
 			{#if slot.style === 'bars'}
 				{#each bars as b, i (i)}
 					<rect x={i * (W / BUCKETS) + 0.4} y={H - b} width={W / BUCKETS - 0.8} height={b} fill="currentColor" opacity="0.7" />

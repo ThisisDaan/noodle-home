@@ -18,7 +18,14 @@ data class Entity(
     val unit: String? = null,
     @SerialName("device_class") val deviceClass: String? = null,
     val actions: List<String>? = null,
+    val attrs: Map<String, JsonElement>? = null,
 ) {
+    private fun attr(name: String) = (attrs?.get(name) as? JsonPrimitive)?.doubleOrNull
+    val min: Float? get() = attr("min")?.toFloat()
+    val max: Float? get() = attr("max")?.toFloat()
+    val step: Float? get() = attr("step")?.toFloat()
+    /** A thermostat's mode ("heat", "off", ...), when it reports one. */
+    val mode: String? get() = (attrs?.get("mode") as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content
     private val prim get() = state as? JsonPrimitive
     val on: Boolean? get() = if (state is JsonNull) null else prim?.booleanOrNull
     val number: Double? get() = if (state is JsonNull) null else prim?.doubleOrNull

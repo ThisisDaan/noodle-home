@@ -201,8 +201,15 @@ class Hub:
             return  # first sighting is not a change
         if old[0] != entity.state:
             self._record(device, entity.key, entity.state)
+        # A dimmable light's level (0 when off) is a series of its own, "brightness", so it can be graphed.
+        if entity.kind == "light" and entity.brightness is not None and self._first_dimmable(device) is entity:
+            self._record(device, "brightness", entity.brightness if entity.state else 0)
         for listener in self._state_listeners:
             listener(device, entity, old[0], entity.state)
+
+    @staticmethod
+    def _first_dimmable(device: Device) -> Entity | None:
+        return next((e for e in device.entities.values() if e.kind == "light" and e.brightness is not None), None)
 
     def _presence(self, device: Device, now: float) -> Entity | None:
         """Add or update the presence entity of a motion sensor. Returns it, or None for other devices."""

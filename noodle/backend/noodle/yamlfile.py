@@ -103,7 +103,7 @@ class YamlFile:
         """Edited, created or removed since the app last read or wrote it."""
         return self._current_stamp() != self._stamp
 
-    def write(self, values: Mapping, replace: bool = False, sections: bool = False) -> None:
+    def write(self, values: Mapping, replace: bool = False, sections: bool = False, whole: tuple[str, ...] = ()) -> None:
         """Put values in the file. replace=True makes the file hold exactly these values; otherwise other keys stay.
         sections=True keeps the other keys inside each top-level section too."""
         yaml = new_yaml()
@@ -115,6 +115,9 @@ class YamlFile:
                 doc = None
         if not isinstance(doc, CommentedMap):
             doc = CommentedMap()
+        for key in whole:  # these top-level keys are written as given: what is not in them any more is gone
+            if key in values and key in doc:
+                del doc[key]
         _merge(doc, values, replace, 0, sections)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_name(self.path.name + ".tmp")

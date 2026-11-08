@@ -5,7 +5,7 @@ mock.module('../api.ts', () => ({ formatState: (e: { state: unknown }) => (e.sta
 mock.module('./clock.svelte.ts', () => ({ agoText: () => '5m ago' }));
 mock.module('./cardDesign.ts', () => ({ COLORS: { warning: {}, success: {}, error: {} } }));
 
-const { renderTemplate, parseTemplate, rulesToTemplate, resolve } = await import('./cardText.ts');
+const { renderTemplate, parseTemplate, rulesToTemplate, resolve, setDevices, defaultTemplate, fieldsOf } = await import('./cardText.ts');
 
 const device = (motion: boolean, temp = 21) =>
 	({ name: 'Hall', last_seen: 1, entities: [
@@ -99,4 +99,77 @@ test('words coloured and styled inline', () => {
 	// without {/color} the old meaning holds: the colour is the component's
 	expect(run('{color warning}Hot')).toMatchObject({ text: 'Hot', color: 'warning' });
 	expect(run('{color warning}Hot').parts).toBeUndefined();
+});
+
+test('a component sets its own background', () => {
+	const s = slot('{if motion == true}\n{bg success}\n{:else}\n{bg error}\n{/if}')
+	expect(resolve(s, device(true), 0).bg).toBe('success');
+	expect(resolve(s, device(false), 0).bg).toBe('error');
+	expect(resolve(slot('plain'), device(true), 0).bg).toBeUndefined();
+});
+
+test('font size on the selected words', () => {
+	const r = run('Big {size 24}{motion}{/size} small');
+	expect(r.parts?.map((p) => [p.text, p.size])).toEqual([['Big ', undefined], ['On', 24], [' small', undefined]]);
+});
+
+test('a template reads another device by its name', () => {
+	setDevices(() => [{ id: 'hue:1', name: 'Living room lamp', entities: [{ key: 'brightness', name: 'Brightness', state: 80 }] }] as never);
+	expect(run('Lamp {living_room_lamp.brightness}%').text).toBe('Lamp 80%');
+	expect(run('{if living_room_lamp.brightness > 50}Bright{:else}Dim{/if}').text).toBe('Bright');
+	expect(run('{device.motion}').text).toBe('On'); // the device's own fields still work
+	setDevices(() => []);
+});
+
+test('the default template of a component works and says what it shows now', () => {
+	const d = device(true);
+	const base = { x: 0, y: 0, w: 1, h: 1 };
+	const on = defaultTemplate({ ...base, component: 'value', key: 'motion' } as never, d);
+	expect(on).toContain('{if device.motion == true}');
+	expect(parseTemplate(on).error).toBeUndefined();
+	expect(renderTemplate(on, d, d.entities[0], { ...base, component: 'value', key: 'motion' } as never, 0).text).toBe('On');
+	expect(defaultTemplate({ ...base, component: 'slider', key: 'temp' } as never, d)).toBe('{device.temperature}');
+	expect(defaultTemplate({ ...base, component: 'switch', key: 'motion' } as never, d)).toBe('');
+});
+
+test('{fill colour} sets the fill, apart from the text colour', () => {
+	const r = renderTemplate('{fill success}{color error}x', device(true), undefined, slot('x'), 0);
+	expect(r.fill).toBe('success');
+	expect(r.color).toBe('error');
+	expect(r.text).toBe('x');
+});
+
+test('hex colours work anywhere a colour does, and a light has a brightness field', () => {
+	const lamp = { name: 'Lamp', last_seen: 1, entities: [{ key: 'light', name: 'Light', kind: 'light', state: true, brightness: 80 }] } as never;
+	const t = '{if device.brightness > 50}{bg #112233}{fill #abc}{color #ff0000}{:else}{bg success}{/if}{device.light}';
+	const r = renderTemplate(t, lamp, undefined, slot(t), 0);
+	expect(r.bg).toBe('#112233');
+	expect(r.fill).toBe('#abc');
+	expect(r.color).toBe('#ff0000');
+	expect(fieldsOf(lamp).find((f) => f.key === 'brightness').state).toBe(80);
+	expect(renderTemplate(t, { ...lamp, entities: [{ ...lamp.entities[0], brightness: 20 }] }, undefined, slot(t), 0).bg).toBe('success');
+});
+
+test('rgba and hsl colours work, and nothing else gets into a style', () => {
+	const r = renderTemplate('{fill rgba(0, 0, 0, 0)}{bg hsl(120 50% 40%)}{color url(x)}x', device(true), undefined, slot('x'), 0);
+	expect(r.fill).toBe('rgba(0, 0, 0, 0)');
+	expect(r.bg).toBe('hsl(120 50% 40%)');
+	expect(r.color).toBeUndefined();
+});
+
+test('two easy mistakes are pointed out', () => {
+	const nl = String.fromCharCode(10);
+	expect(parseTemplate(['{if device.temp > 1', 'x', '{/if}'].join(nl)).error).toContain('never closed');
+	expect(parseTemplate(['{if device.temp > 1}', 'x', '{else}', 'y', '{/if}'].join(nl)).error).toContain('colon');
+	expect(parseTemplate(['{if device.temp > 1}', 'x', '{:else}', 'y', '{/if}'].join(nl)).error).toBeUndefined();
+});
+
+test('{field.history} draws a small graph in the text, of this or another device', () => {
+	const lamp = { id: 'lamp1', name: 'Lamp', last_seen: 1, entities: [{ key: 'light', name: 'Light', state: true, kind: 'light', brightness: 50 }] };
+	setDevices(() => [lamp as never]);
+	const r = run('Level {device.temp.history.24h bars} now {lamp.brightness.history}', device(true));
+	const graphs = r.parts!.filter((p) => p.graph).map((p) => p.graph);
+	expect(graphs[0]).toEqual({ deviceId: undefined, key: 'temp', hours: 24, bars: true });
+	expect(graphs[1]).toEqual({ deviceId: 'lamp1', key: 'brightness', hours: 5, bars: false });
+	expect(run('{nothing.history}').text).toBe('{nothing.history}');
 });

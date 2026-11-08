@@ -65,12 +65,16 @@ body {
 }
 
 /* Device tiles. A card is w x h cells of the dashboard grid (--cw, --ch); the grids give a cell 9rem of height. On a
-   phone there is one column, so only the height counts. */
+   phone there are two columns, so a card two or more cells wide takes the full width and a one-cell card half. */
 .card-span {
 	grid-row: span var(--ch, 1);
 }
+.card-span.card-wide {
+	grid-column: 1 / -1;
+}
 @media (min-width: 640px) {
-	.card-span {
+	.card-span,
+	.card-span.card-wide {
 		grid-column: span var(--cw, 1);
 	}
 }

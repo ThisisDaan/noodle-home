@@ -129,3 +129,19 @@ def test_hue_search_uses_the_bridges_own_announcement(monkeypatch):
     found = []
     asyncio.run(hue.discover(1, found.append))
     assert found == ["192.168.1.57"]  # IPv4 only, and no call to Philips' servers
+
+
+def test_a_dimmable_lights_level_is_recorded_as_its_own_history(tmp_path):
+    from noodle.hub import Entity
+
+    hub = make_hub(tmp_path)
+    lamp = Entity(key="light", kind="light", name="Lamp", state=False, brightness=80)
+    hub.upsert(Device(id="hue:lamp", source="hue", name="Lamp", entities={"light": lamp}))
+    lamp.state = True
+    hub.changed(hub.devices["hue:lamp"])
+    lamp.brightness = 40
+    hub.changed(hub.devices["hue:lamp"])
+    lamp.state = False
+    hub.changed(hub.devices["hue:lamp"])
+    levels = [r["value"] for r in reversed(hub.store.history("hue:lamp")) if r["key"] == "brightness"]
+    assert levels == [80, 40, 0]  # on at 80, dimmed to 40, off = 0

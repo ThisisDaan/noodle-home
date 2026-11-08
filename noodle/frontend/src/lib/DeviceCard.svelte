@@ -27,7 +27,7 @@
 	// Every card is made of components (devices/cardDesign.ts): the saved design, else the device's own look written
 	// as one. Only a remote's buttons have no such look yet and keep DeviceFace.
 	const saved = $derived(layout.cards[device.id]);
-	const design = $derived(saved ?? defaultDesign(device));
+	const design = $derived(layout.designFor(device) ?? defaultDesign(device));
 </script>
 
 <!-- Every card has the same structure and height: the name with one line under it, and a bottom row (DeviceFace)
@@ -36,6 +36,7 @@
 <div
 	class="tile card-span group relative flex flex-col justify-between gap-3 p-3.5"
 	style="--cw: {design?.w ?? 1}; --ch: {design?.h ?? 1};"
+	class:card-wide={(design?.w ?? 1) >= 2}
 	class:opacity-40={dim}
 	class:is-on={lit}
 	class:is-dragging={dragging}

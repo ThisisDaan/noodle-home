@@ -31,7 +31,9 @@
 		<rect x="9" y="7" width="30" height="14" rx="7" class="fill-primary/30" /><circle cx="32" cy="14" r="5" class="fill-primary" />
 	{:else if look === 'slider'}
 		<rect x="4" y="12" width="40" height="4" rx="2" fill="currentColor" opacity="0.2" /><rect x="4" y="12" width="24" height="4" rx="2" class="fill-primary" /><circle cx="28" cy="14" r="5" class="fill-primary" />
-	{:else if look === 'dial'}
+	{:else if look === 'button'}
+		<rect x="8" y="6" width="32" height="16" rx="5" fill="currentColor" opacity="0.15" /><circle cx="24" cy="14" r="3" fill="currentColor" />
+	{:else if look === 'dial' || look === 'knob'}
 		<circle cx="24" cy="14" r="10" stroke="currentColor" stroke-width="3" opacity="0.2" /><path d="M24 4 A10 10 0 0 1 34 14" class="stroke-primary" stroke-width="3" stroke-linecap="round" /><text x="24" y="17" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">21</text>
 	{/if}
 </svg>

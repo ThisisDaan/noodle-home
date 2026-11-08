@@ -1,11 +1,15 @@
 <script lang="ts">
-	import { command, formatState, isOn, type Device } from '../api.ts';
+	import { api, command, formatState, isOn, type Device } from '../api.ts';
 	import Icon from '../Icon.svelte';
 	import HistoryGraph from './HistoryGraph.svelte';
-	import { COLORS, autoStyle, type CardSlot, type CardStyle } from './cardDesign.ts';
-	import { resolve, unitOf, valueText } from './cardText.ts';
+	import InlineGraph from './InlineGraph.svelte';
+	import { autoStyle, tapsOf, type CardSlot, type CardStyle } from './cardDesign.ts';
+	import DialControl from './DialControl.svelte';
+	import { backgroundStyle, resolve, setDevices, unitOf, valueText } from './cardText.ts';
+	import { fillClassOf, fillStyle, textClass, textStyle, tintClass, tintStyle } from './colors.ts';
 	import { useClock } from './clock.svelte.ts';
-	import { isContact, isMotion, isPower } from './kinds.ts';
+	import { live } from '../live.svelte';
+	import { fieldsOf, isContact, isMotion, isPower } from './kinds.ts';
 	import PowerButton from './PowerButton.svelte';
 
 	/** One component of a card, tied to one field of the device (a label has none). Every card is made of these, a
@@ -18,9 +22,17 @@
 	const labelled = $derived(!!slot.label);
 
 	const clock = useClock();
-	const entity = $derived(device.entities.find((e) => e.key === slot.key));
-	const name = $derived(slot.label || entity?.name || slot.key);
-	const res = $derived(resolve(slot, device, clock.now));
+	// a template can read other devices' fields too (living_room_lamp.brightness)
+	setDevices(() => Object.values(live.devices));
+	// a reading can show a field of another device; everything else belongs to this one
+	const src = $derived(slot.component === 'value' && slot.device && slot.device !== device.id ? live.devices[slot.device] : device);
+	const entity = $derived(src ? fieldsOf(src).find((e) => e.key === slot.key) : undefined);
+	const res = $derived(resolve(slot, device, clock.now, src ?? device));
+	// a graph draws what its text says: {device.brightness.history.24h}; text without one falls back to the component's own field
+	const graphT = $derived(res.parts?.find((p) => p.graph)?.graph);
+	const gdev = $derived(graphT ? (live.devices[graphT.deviceId] ?? src ?? device) : (src ?? device));
+	const gent = $derived(graphT ? (fieldsOf(gdev).find((e) => e.key === graphT.key) ?? entity) : entity);
+	const name = $derived(slot.label || (graphT ? gent?.name : entity?.name) || slot.key);
 	let busy = $state(false);
 	const usable = $derived(device.available && !busy);
 
@@ -33,6 +45,42 @@
 			busy = false;
 		}
 	}
+
+	// a button: it presses like the real one (shows in the history, runs the automations that listen to it)
+	let pressed = $state(false);
+	let error = $state('');
+	const mainPress = (e?: typeof entity) => e?.actions?.find((a) => /^(single|press|short_release|initial_press)$/.test(a)) ?? e?.actions?.[0] ?? 'single';
+	async function pressAction(target: typeof entity, action: string) {
+		if (!target) return;
+		pressed = true;
+		error = '';
+		try {
+			await api(`/devices/${encodeURIComponent(device.id)}/entities/${encodeURIComponent(target.key)}/press`, { body: { action } });
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		} finally {
+			setTimeout(() => (pressed = false), 250);
+		}
+	}
+	// An input that reports single / double / triple (a tap switch): tap once, twice or three times within a moment,
+	// like the real one. The press is sent once the taps stop.
+	const multiTap = $derived(!slot.action && !!entity && tapsOf(entity).length > 1);
+	let taps = 0;
+	let tapTimer: ReturnType<typeof setTimeout> | undefined;
+	function press() {
+		if (!entity) return;
+		if (!multiTap) return void pressAction(entity, slot.action ?? mainPress(entity));
+		const allowed = tapsOf(entity);
+		taps = Math.min(taps + 1, allowed.length);
+		clearTimeout(tapTimer);
+		tapTimer = setTimeout(() => {
+			const action = allowed[taps - 1];
+			taps = 0;
+			pressAction(entity, action);
+		}, 350);
+	}
+	// a knob: the brighter and dimmer pair of a remote (this field is "brighter", its partner in the same group "dimmer")
+	const partner = $derived(entity ? device.entities.find((e) => e.kind === 'button' && e.role === 'decrease' && (e.group ?? null) === (entity.group ?? null)) : undefined);
 
 	// a number with a range and a step (from the field; a light's brightness is 1..100)
 	const light = $derived(entity?.kind === 'light');
@@ -75,17 +123,25 @@
 	const weight = $derived(slot.bold === false ? 'font-normal' : slot.bold ? 'font-extrabold' : 'font-bold');
 	const deco = $derived(`${slot.italic ? 'italic ' : ''}${slot.underline ? 'underline' : ''}`);
 	const align = $derived({ left: 'items-start text-left', center: 'items-center text-center', right: 'items-end text-right' }[slot.align ?? 'left']);
-	const textColor = $derived(res.color ? COLORS[res.color].text : '');
-	const tint = $derived(res.color ? COLORS[res.color].tint : '');
+	const textColor = $derived(textClass(res.color));
+	const bgCss = $derived(backgroundStyle(res.bg));
+	/** a hex text colour is a style on the component (its children take it from there) */
+	const inkCss = $derived(textStyle(res.color));
+	// the colour of what fills or draws: {fill …}, else the text colour's tint, else the component's own
+	const accent = $derived(res.fill ?? res.color);
+	const tint = $derived(tintClass(accent));
+	const tintCss = $derived(tintStyle(accent));
+	const fillClass = $derived(fillClassOf(res.fill) || tint.split(' ')[0]);
+	const fillCss = $derived(fillStyle(accent));
 	const size = (long: boolean) => (style === 'text-l' ? (long ? 'text-base' : 'text-2xl') : style === 'text-m' ? 'text-lg' : 'text-sm');
 </script>
 
-{#snippet rich(fallback: string)}{#if res.parts}{#each res.parts as p, i (i)}<span class="{p.color ? COLORS[p.color].text : ''} {p.bold ? 'font-black' : ''} {p.italic ? 'italic' : ''} {p.underline ? 'underline' : ''}">{p.text}</span>{/each}{:else}{fallback}{/if}{/snippet}
+{#snippet rich(fallback: string)}{#if res.parts}{#each res.parts as p, i (i)}<span style={`${p.size ? `font-size:${p.size}px;line-height:1.15;` : ''}${textStyle(p.color)}` || undefined} class="{textClass(p.color)} {p.bold ? 'font-black' : ''} {p.italic ? 'italic' : ''} {p.underline ? 'underline' : ''}">{#if p.graph}<InlineGraph graph={p.graph} />{/if}{p.text}</span>{/each}{:else}{fallback}{/if}{/snippet}
 
-<div class="size-full {deco}" class:opacity-30={res.hide} class:hidden={res.hide && !preview}>
+<div class="size-full {deco}" class:rounded-box={!!res.bg} class:opacity-30={res.hide} class:hidden={res.hide && !preview} style={bgCss + inkCss}>
 	{#if slot.component === 'text'}
 		{#if style === 'chip'}
-			<div class="rounded-box flex h-full min-w-0 items-center justify-center gap-2 px-3 {tint || 'bg-base-content/5'} {textColor}">
+			<div class="rounded-box flex h-full min-w-0 items-center justify-center gap-2 px-3 {tint || 'bg-base-content/5'} {textColor}" style={bgCss || tintCss}>
 				{#if res.icon}<Icon name={res.icon} class="size-5 shrink-0" />{/if}
 				<span class="truncate {weight}">{@render rich(text)}</span>
 			</div>
@@ -96,25 +152,36 @@
 				</span>
 			</div>
 		{/if}
+	{:else if !entity && gent && graphT}
+		<!-- the graph's own field is gone from this device, but its text points at another one -->
+		<HistoryGraph device={gdev} entity={gent} hours={graphT.hours} fieldKey={graphT.key} {slot} {name} {labelled} text={res.text || undefined} color={res.fill ? textClass(res.fill) : textColor} colorStyle={res.fill ? textStyle(res.fill) : inkCss} />
 	{:else if !entity}
 		<div class="bg-base-content/5 rounded-box grid h-full place-items-center px-2 text-center text-xs opacity-60" title="This field is gone from the device">–</div>
+	{:else if slot.component === 'button'}
+		<button type="button" class="btn rounded-box size-full min-h-0 px-1 text-xs capitalize active:scale-90 {pressed ? 'btn-primary' : res.bg ? 'border-0 bg-transparent shadow-none' : 'btn-soft'} {textColor}" title={name} aria-label="Press {name}" disabled={!device.available}
+			onclick={press}>{@render rich(res.text ?? (slot.label || (slot.action ? slot.action.replace(/_press$/, '').replaceAll('_', ' ') : entity.name.replace(/^Button\s*/i, '') || entity.name)))}</button>
+		{#if error}<p class="text-error absolute right-1 bottom-0 text-xs">{error}</p>{/if}
+	{:else if slot.component === 'knob'}
+		<div class="flex h-full items-center justify-center" class:opacity-50={!device.available}>
+			<DialControl label={slot.label || entity.group || device.name} onstep={(d) => { const t = d > 0 ? entity : partner; pressAction(t, mainPress(t)); }} />
+		</div>
 	{:else if slot.component === 'switch'}
 		<div class="flex h-full min-w-0 items-center gap-2">
-			<PowerButton on={entity.state === true} label={name} disabled={!usable} onclick={() => send({ toggle: true })} />
+			<PowerButton on={entity.state === true} label={name} fill={fillClassOf(res.fill)} fillCss={fillStyle(res.fill)} disabled={!usable} onclick={() => send({ toggle: true })} />
 			{#if (labelled || slot.label) && slot.w >= 2}<span class="min-w-0 truncate text-sm font-medium">{name}</span>{/if}
 		</div>
 	{:else if slot.component === 'value'}
 		{#if style === 'line' || style === 'bars' || style === 'spark'}
-			<HistoryGraph {device} {entity} {slot} {name} {labelled} text={res.text} color={textColor} />
+			<HistoryGraph device={gdev} entity={gent ?? entity} hours={graphT?.hours} fieldKey={graphT?.key} {slot} {name} {labelled} text={res.text || undefined} color={res.fill ? textClass(res.fill) : textColor} colorStyle={res.fill ? textStyle(res.fill) : inkCss} />
 		{:else if style === 'chip' && look !== 'status'}
-			<div class="bg-base-content/10 rounded-box relative h-full min-w-0 overflow-hidden {textColor}" class:opacity-50={!device.available}>
-				<span class="absolute inset-0 transition-opacity {tint || 'bg-warning/50'}" class:opacity-0={!res.color && !isOn(device)}></span>
+			<div class="bg-base-content/10 rounded-box relative h-full min-w-0 overflow-hidden {textColor}" class:opacity-50={!device.available} style={bgCss}>
+				<span class="absolute inset-0 transition-opacity {tint || 'bg-warning/50'}" style={tintCss} class:opacity-0={!res.color && !res.fill && !isOn(device)} class:hidden={!!res.bg}></span>
 				<span class="absolute inset-0 flex items-center justify-center gap-2 truncate px-2 {weight} tabular-nums">
 					{#if res.icon}<Icon name={res.icon} class="size-5 shrink-0" />{/if}{labelled && res.text === undefined ? `${name} ` : ''}{@render rich(res.text ?? (typeof entity.state === 'number' ? valueText(entity, slot) : formatState(entity)))}
 				</span>
 			</div>
 		{:else if style === 'chip' || style === 'icon'}
-			<div class="rounded-box flex h-full min-w-0 items-center gap-3 px-3 transition-colors {style === 'icon' ? 'justify-center' : ''} {tint || (active ? (isMotion(entity) ? 'bg-success/20 text-success' : 'bg-warning/20 text-warning') : 'bg-base-content/5')}"
+			<div style={bgCss || tintCss} class="rounded-box flex h-full min-w-0 items-center gap-3 px-3 transition-colors {style === 'icon' ? 'justify-center' : ''} {tint || (active ? (isMotion(entity) ? 'bg-success/20 text-success' : 'bg-warning/20 text-warning') : 'bg-base-content/5')}"
 				class:opacity-50={!device.available}>
 				{#if res.icon}
 					<Icon name={res.icon} class="size-5 shrink-0" />
@@ -132,7 +199,7 @@
 			<div class="relative grid h-full min-w-0 place-items-center {textColor}" class:opacity-50={!device.available}>
 				<svg viewBox="0 0 36 36" class="absolute inset-0 m-auto size-full max-h-full" role="img" aria-label="{name}: {text}">
 					<circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" stroke-opacity="0.12" stroke-width="3" />
-					<circle cx="18" cy="18" r="15.9" fill="none" class={res.color ? '' : 'text-primary'} stroke="currentColor" stroke-width="3" stroke-linecap="round" pathLength="100"
+					<circle cx="18" cy="18" r="15.9" fill="none" style={textStyle(res.fill)} class={res.fill ? textClass(res.fill) : res.color ? '' : 'text-primary'} stroke="currentColor" stroke-width="3" stroke-linecap="round" pathLength="100"
 						stroke-dasharray="{fill} 100" transform="rotate(-90 18 18)" />
 				</svg>
 				<span class="relative flex max-w-[70%] flex-col items-center leading-none">
@@ -146,7 +213,7 @@
 			</div>
 		{:else if style === 'bar'}
 			<div class="bg-base-content/10 rounded-box relative h-full min-w-0 overflow-hidden" class:opacity-50={!device.available}>
-				<div class="absolute inset-y-0 left-0 transition-[width] {tint ? tint.split(' ')[0] : 'bg-primary/50'}" style="width: {fill}%"></div>
+				<div class="absolute inset-y-0 left-0 transition-[width] {fillClass || 'bg-primary/50'}" style="width: {fill}%;{fillCss}"></div>
 				<span class="absolute inset-0 grid place-items-center truncate px-2 text-sm {weight} tabular-nums {textColor}">{labelled && res.text === undefined ? `${name} ` : ''}{@render rich(res.text ?? `${shown(num)}${unit}`)}</span>
 			</div>
 		{:else}
@@ -162,23 +229,23 @@
 			</div>
 		{/if}
 	{:else if slot.component === 'dial'}
-		<div class="bg-base-content/10 rounded-box flex h-full min-w-0 items-center gap-1 px-1.5">
+		<div class="{res.bg ? '' : 'bg-base-content/10'} rounded-box flex h-full min-w-0 items-center gap-1 px-1.5">
 			<button type="button" class="btn btn-circle btn-sm btn-ghost" aria-label="{name}: lower" disabled={!usable} onclick={() => nudge(-1)}>−</button>
 			<div class="flex min-w-0 grow flex-col items-center leading-tight">
 				{#if labelled}<span class="w-full truncate text-center text-xs opacity-70">{name}</span>{/if}
-				<span class="font-bold tabular-nums">{shown(wanted ?? num)}{unit}</span>
+				<span class="{weight} tabular-nums {textColor}">{@render rich(res.text ?? `${shown(wanted ?? num)}${unit}`)}</span>
 			</div>
 			<button type="button" class="btn btn-circle btn-sm btn-ghost" aria-label="{name}: raise" disabled={!usable} onclick={() => nudge(1)}>+</button>
 		</div>
 	{:else if slot.component === 'slider'}
-		<div class="bg-base-content/10 rounded-box relative h-full min-w-0 overflow-hidden" class:opacity-50={!device.available}>
-			<div class="{light ? 'bg-warning/50' : 'bg-primary/50'} absolute inset-y-0 left-0" style="width: {fill}%"></div>
+		<div class="{res.bg ? '' : 'bg-base-content/10'} rounded-box relative h-full min-w-0 overflow-hidden" class:opacity-50={!device.available}>
+			<div class="{fillClass || (light ? 'bg-warning/50' : 'bg-primary/50')} absolute inset-y-0 left-0" style="width: {fill}%;{fillCss}"></div>
 			<input type="range" min={low} max={high} {step} value={level} aria-label={name} disabled={!usable && !wanted}
 				class="absolute inset-0 size-full cursor-pointer opacity-0"
 				oninput={(e) => want(Number(e.currentTarget.value))}
 				onchange={(e) => setLevel(Number(e.currentTarget.value))} />
-			<span class="pointer-events-none absolute inset-0 grid place-items-center px-2 font-bold tabular-nums">
-				{#if light}{level > 0 ? `${shown(level)}%` : 'Off'}{:else}{labelled ? `${name} ` : ''}{shown(level)}{unit}{/if}
+			<span class="pointer-events-none absolute inset-0 grid place-items-center px-2 {weight} tabular-nums {textColor}">
+				{#if res.text !== undefined}{@render rich(res.text)}{:else if light}{level > 0 ? `${shown(level)}%` : 'Off'}{:else}{labelled ? `${name} ` : ''}{shown(level)}{unit}{/if}
 			</span>
 		</div>
 	{/if}

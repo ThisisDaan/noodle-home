@@ -6,6 +6,7 @@ import asyncio
 import inspect
 import json
 import logging
+import re
 import time
 import types
 from contextlib import asynccontextmanager
@@ -441,12 +442,20 @@ DEVICE_GROUPS = {"room", "type", "source", "none"}
 # and a display style. (frontend devices/cardDesign.ts must say the same.)
 CARD_MAX = (4, 4)
 CARD_PER_CELL = (4, 2)
-CARD_COMPONENTS = {"switch", "value", "dial", "slider", "text"}  # text: a label that needs no field
+CARD_COMPONENTS = {"switch", "value", "dial", "slider", "text", "button", "knob"}  # text: a label that needs no field
 # Text, format and rules of a component (frontend devices/cardText.ts): a text template with {tokens}, number format,
 # text style, and "when field <op> value then text / colour / icon / hide" rules (first match wins).
 CARD_COLORS = {"primary", "secondary", "accent", "success", "warning", "error", "info", "neutral"}
 CARD_ICONS = {"bulb", "plug", "thermo", "motion", "door", "gauge", "star", "eye", "eyeoff", "check", "close", "battery", "wifi",
               "power", "clock", "bell", "bolt", "home", "pause"}
+# a colour is a named one or a hex / rgb() / hsl() value (frontend cardText.ts isHex)
+_CARD_CSS_COLOR = re.compile(r"^(#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|(rgb|rgba|hsl|hsla)\(\s*[0-9.,%\s/]+(deg)?[0-9.,%\s/]*\))$", re.I)
+
+
+def _card_color(value) -> bool:
+    return isinstance(value, str) and (value in CARD_COLORS or bool(_CARD_CSS_COLOR.match(value)))
+
+
 CARD_OPS = {"is", "not", "above", "below", "between"}
 CARD_ALIGN = {"left", "center", "right"}
 CARD_MAX_RULES = 8
@@ -455,6 +464,7 @@ CARD_HOURS = {1, 6, 24, 72, 168}
 # The first card designs: a size name and slots by number. Still read (once), and written the new way.
 _OLD_CARD_SIZES = {"small": (2, 1, 1, 1), "wide": (4, 1, 2, 1), "large": (4, 3, 2, 2)}  # cols, rows, new w, new h
 _OLD_CARD_COMPONENTS = {"switch": (1, 1), "value": (1, 1), "dial": (2, 1), "slider": (1, 1), "graph": (2, 2)}
+CARD_KINDS = {"light", "switch", "button", "motion", "contact", "climate", "thermostat", "generic"}  # frontend deviceKind
 DEVICE_SORTS = {"name", "recent"}
 
 
@@ -466,12 +476,14 @@ class LayoutBody(BaseModel):
     widgets: list[dict] | None = Field(default=None, max_length=50)
     devices_view: dict | None = None
     cards: dict | None = None
+    card_defaults: dict | None = None
 
 
 def _upgrade_card(design: dict) -> dict:
     """A first-version design (`size` + slots by number) as the current one. Safe to run on a current design: it
     has no `size`, so it comes back as it was."""
-    if design.get("size") not in _OLD_CARD_SIZES:
+    # A leftover `size` next to a current w/h (the file writer merges into what was there) must not trigger this.
+    if design.get("size") not in _OLD_CARD_SIZES or "w" in design or "h" in design:
         return design
     cols, rows, w, h = _OLD_CARD_SIZES[design["size"]]
     fine_cols, fine_rows = w * CARD_PER_CELL[0], h * CARD_PER_CELL[1]
@@ -507,7 +519,7 @@ def _clean_rules(raw) -> list[dict]:
         result = {}
         if isinstance(then.get("text"), str):
             result["text"] = then["text"][:200]
-        if then.get("color") in CARD_COLORS:
+        if _card_color(then.get("color")):
             result["color"] = then["color"]
         if then.get("icon") in CARD_ICONS:
             result["icon"] = then["icon"]
@@ -560,6 +572,8 @@ def _clean_cards(raw) -> dict:
                 continue
             taken |= cells
             item = {"x": x, "y": y, "w": w, "h": h, "component": slot["component"], "key": key[:100]}
+            if slot["component"] == "value" and isinstance(slot.get("device"), str) and slot["device"].strip():
+                item["device"] = slot["device"].strip()[:100]  # a reading of another device's field
             if slot["component"] in ("value", "text") and slot.get("style") in CARD_STYLES:
                 item["style"] = slot["style"]
             if isinstance(slot.get("template"), str) and slot["template"]:
@@ -576,18 +590,27 @@ def _clean_cards(raw) -> dict:
                 item["bold"] = False
             if slot.get("align") in CARD_ALIGN:
                 item["align"] = slot["align"]
-            if slot.get("color") in CARD_COLORS:
+            if _card_color(slot.get("color")):
                 item["color"] = slot["color"]
             rules = _clean_rules(slot.get("rules"))
             if rules:
                 item["rules"] = rules
             if slot.get("hours") in CARD_HOURS and not isinstance(slot.get("hours"), bool):
                 item["hours"] = slot["hours"]
+            if slot["component"] == "button" and isinstance(slot.get("action"), str) and slot["action"].strip():
+                item["action"] = slot["action"].strip()[:60]
             if isinstance(slot.get("label"), str) and slot["label"].strip():
                 item["label"] = slot["label"].strip()[:40]
             slots.append(item)
         clean[device_id[:100]] = {"w": design["w"], "h": design["h"], "slots": slots}
     return clean
+
+
+def _clean_card_defaults(raw) -> dict:
+    """The card design every device of a kind gets (by kind name) when it has none of its own."""
+    if not isinstance(raw, dict):
+        return {}
+    return _clean_cards({kind: design for kind, design in raw.items() if kind in CARD_KINDS})
 
 
 def _clean_widgets(raw) -> list[dict] | None:
@@ -636,6 +659,7 @@ def _read_layout() -> dict:
     layout["widgets"] = _clean_widgets(saved.get("widgets"))
     layout["devices_view"] = _clean_devices_view(saved.get("devices_view"))
     layout["cards"] = _clean_cards(saved.get("cards"))
+    layout["card_defaults"] = _clean_card_defaults(saved.get("card_defaults"))
     return layout
 
 
@@ -652,7 +676,9 @@ def put_layout(body: LayoutBody) -> dict:
     values["devices_view"] = _clean_devices_view(body.devices_view)
     # A save that does not mention cards (a page that was open before they existed) keeps the ones there are.
     values["cards"] = _clean_cards(body.cards if body.cards is not None else _read_layout()["cards"])
-    dashboard.write(values)
+    saved = _read_layout()
+    values["card_defaults"] = _clean_card_defaults(body.card_defaults if body.card_defaults is not None else saved["card_defaults"])
+    dashboard.write(values, whole=("cards", "card_defaults"))  # a design taken away must leave the file too
     return _read_layout()
 
 

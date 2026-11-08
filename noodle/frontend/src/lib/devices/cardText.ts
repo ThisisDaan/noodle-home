@@ -1,5 +1,6 @@
 import { formatState, type Device, type Entity } from '../api.ts';
 import { agoText } from './clock.svelte.ts';
+import { fieldsOf, isMotion } from './kinds.ts';
 import { COLORS, type CardColor, type CardRule, type CardSlot } from './cardDesign.ts';
 
 /** What a component shows when its text and number format are applied. Pure: the card (and the designer's
@@ -40,10 +41,51 @@ export const TOKENS = [
 	{ token: '{seen:clock}', label: 'Last seen (clock time)' }
 ];
 const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+export { fieldsOf };
+
+/** A colour in a template: one of the named ones (success, warning ...) or a CSS colour of your own: hex (#3b82f6, #3b82f680)
+ * or rgb(), rgba(), hsl(), hsla() (only digits, %, dots, commas, spaces and slashes inside, so nothing else can get in). */
+export const isHex = (c?: string) => !!c && (/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(c) || /^(rgb|rgba|hsl|hsla)\(\s*[0-9.,%\s/]+(deg)?[0-9.,%\s/]*\)$/i.test(c));
+const isColor = (c?: string) => !!c && (c in COLORS || isHex(c));
+
 /** A field of the device by the name a template uses: `occupancy` or `device.occupancy`, either the key or the name as shown. */
 export function findField(device: Device, ref: string): Entity | undefined {
-	const n = ref.replace(/^device\./, '');
-	return device.entities.find((x) => x.key === n) ?? device.entities.find((x) => slug(x.name) === slug(n));
+	return locate(device, ref)?.entity;
+}
+/** The same, with the device the field belongs to (a graph needs both). */
+export function locate(device: Device, ref: string): { device: Device; entity: Entity } | undefined {
+	const own = (d: Device, n: string) => { const all = fieldsOf(d); const f = all.find((x) => x.key === n) ?? all.find((x) => slug(x.name) === slug(n)); return f && { device: d, entity: f }; };
+	// another device's field: `living_room_lamp.brightness` (the device by its name or id, then the field)
+	const m = /^([^.]+)\.(.+)$/.exec(ref);
+	if (m && m[1] !== 'device') {
+		const other = devicesNow().find((d) => d.id === m[1] || slug(d.name) === slug(m[1]));
+		const f = other && own(other, m[2]);
+		if (f) return f;
+	}
+	return own(device, ref.replace(/^device\./, ''));
+}
+/** `{device.brightness.history}`, `{lamp.temperature.history.24h}`, `{device.power.history.3d bars}`: a graph of a field's
+ * last hours (5 h unless told: .1h .24h .3d ...; a line unless "bars"). In a Graph component it is the graph's data; in
+ * other text it is drawn small where it stands. */
+export function graphOf(device: Device, body: string): Part['graph'] | undefined {
+	const m = /^(\S+?)\.history(?:\.(\d+)([hd]))?((?:\s+\S+)*)$/.exec(body.trim());
+	if (!m) return undefined;
+	const at = locate(device, m[1]);
+	if (!at) return undefined;
+	const opts = m[4].trim().split(/\s+/).filter(Boolean);
+	const old = opts.map((o) => /^(\d+)([hd])$/.exec(o)).find(Boolean); // the first spelling: {x.history 24h}
+	const n = m[2] ? [m[2], m[3]] : old ? [old[1], old[2]] : null;
+	const hours = n ? Math.min(336, Math.max(1, Number(n[0]) * (n[1] === 'd' ? 24 : 1))) : 5;
+	return { deviceId: at.device.id, key: at.entity.key, hours, bars: opts.includes('bars') };
+}
+let devicesNow: () => Device[] = () => [];
+/** Where a template finds the other devices (the app gives it the live list). */
+export const setDevices = (list: () => Device[]) => { devicesNow = list; };
+/** How a template names another device's field: `living_room_lamp.brightness` (the field by its key when names clash). */
+export function otherRef(device: Device, f: Pick<Entity, 'key' | 'name'>): string {
+	const s = slug(f.name);
+	const clash = !s || s === 'name' || device.entities.filter((x) => slug(x.name) === s).length > 1;
+	return `${slug(device.name) || device.id}.${clash ? f.key : s}`;
 }
 /** How the designer writes a field: `device.occupancy` from its name, or from its key when two fields read alike. */
 export function fieldName(device: Device, f: Pick<Entity, 'key' | 'name'>): string {
@@ -62,7 +104,7 @@ export const fieldToken = (device: Device, f: Pick<Entity, 'key' | 'name'>) => `
 type Val = string | number | boolean | undefined;
 type Expr = (get: (name: string) => Val) => Val;
 type IfNode = { t: 'if'; branches: { cond: Expr | null; kids: Node[] }[] };
-type Node = { t: 'text'; s: string } | { t: 'span'; what: 'color' | 'b' | 'i' | 'u'; arg: string; on: boolean } | { t: 'out'; s: string } | { t: 'set'; what: 'color' | 'icon' | 'hide'; arg: string } | IfNode;
+type Node = { t: 'text'; s: string } | { t: 'span'; what: 'color' | 'b' | 'i' | 'u' | 'size'; arg: string; on: boolean } | { t: 'out'; s: string } | { t: 'set'; what: 'color' | 'icon' | 'hide' | 'bg' | 'fill'; arg: string } | IfNode;
 
 const YES = ['on', 'true', 'yes'];
 const NO = ['off', 'false', 'no'];
@@ -146,17 +188,21 @@ export function parseTemplate(src: string): { nodes: Node[]; error?: string } {
 	};
 	// when the template closes a colour with {/color}, {color x} colours the words up to it instead of the whole component
 	const spanColors = /\{\/color\}/.test(src);
+	// two easy mistakes that would otherwise just show up as odd text
+	const unclosed = /\{(?:if|:else|\/if|bg|fill|color|icon|size)\b[^{}]*(?=\{|$)/.exec(src);
+	if (unclosed) fail(`A { is never closed: "${unclosed[0].trim().slice(0, 40)}" needs a } at the end.`);
+	if (/\{else\b/.test(src)) fail('Write {:else} or {:else if …} with a colon.');
 	const re = /\{([^{}]*)\}/g;
 	let last = 0;
 	for (let m = re.exec(src); m; m = re.exec(src)) {
 		const body = m[1].trim();
-		const style = /^(color|icon)\s+\S+$|^hide$/.test(body);
-		const inline = /^\/?[biu]$|^\/color$/.exec(body) ?? (spanColors ? /^color\s+\S+$/.exec(body) : null);
+		const style = /^(color|icon|bg|fill)\s+\S.*$|^hide$/.test(body);
+		const inline = /^\/?[biu]$|^\/(color|size)$|^size\s+\d+$/.exec(body) ?? (spanColors ? /^color\s+\S.*$/.exec(body) : null);
 		if (inline) {
 			text(src.slice(last, m.index));
 			const on = !body.startsWith('/');
 			const [what, ...arg] = body.replace(/^\//, '').split(/\s+/);
-			stack[stack.length - 1].kids.push({ t: 'span', what: what as 'color' | 'b' | 'i' | 'u', arg: arg.join(' '), on });
+			stack[stack.length - 1].kids.push({ t: 'span', what: what as 'color' | 'b' | 'i' | 'u' | 'size', arg: arg.join(' '), on });
 			last = re.lastIndex;
 			continue;
 		}
@@ -174,7 +220,7 @@ export function parseTemplate(src: string): { nodes: Node[]; error?: string } {
 		const top = stack[stack.length - 1];
 		if (style) {
 			const [what, ...arg] = body.split(/\s+/);
-			top.kids.push({ t: 'set', what: what as 'color' | 'icon' | 'hide', arg: arg.join(' ') });
+			top.kids.push({ t: 'set', what: what as 'color' | 'icon' | 'hide' | 'bg' | 'fill', arg: arg.join(' ') });
 		} else if (body.startsWith('if')) {
 			const node: IfNode = { t: 'if', branches: [{ cond: cond(body.slice(2), '{if}'), kids: [] }] };
 			top.kids.push(node);
@@ -200,8 +246,8 @@ export function parseTemplate(src: string): { nodes: Node[]; error?: string } {
 }
 
 /** A stretch of the text with its own look, when the template styles words ({color x}…{/color}, {b}…{/b}). */
-export type Part = { text: string; color?: CardColor; bold?: boolean; italic?: boolean; underline?: boolean };
-export type Rendered = { text: string; parts?: Part[]; color?: CardColor; icon?: string; hide: boolean; error?: string };
+export type Part = { text: string; graph?: { deviceId: string; key: string; hours: number; bars: boolean }; color?: string; size?: number; bold?: boolean; italic?: boolean; underline?: boolean };
+export type Rendered = { text: string; parts?: Part[]; color?: string; bg?: string; fill?: string; icon?: string; hide: boolean; error?: string };
 
 /** The template with the device's values in it. */
 export function renderTemplate(template: string, device: Device, e: Entity | undefined, slot: CardSlot, now: number): Rendered {
@@ -232,23 +278,33 @@ export function renderTemplate(template: string, device: Device, e: Entity | und
 	const res: Rendered = { text: '', hide: false, error };
 	const parts: Part[] = [];
 	const open: { what: string; arg: string }[] = [];
+	/** the look of the words being written now ({color x}, {size n}, {b} ...) */
+	const addStyle = (): Omit<Part, 'text'> => {
+		const color = [...open].reverse().find((o) => o.what === 'color' && isColor(o.arg))?.arg;
+		const size = Number([...open].reverse().find((o) => o.what === 'size')?.arg);
+		return { ...(color ? { color } : {}), ...(size >= 8 && size <= 96 ? { size } : {}), ...(open.some((o) => o.what === 'b') ? { bold: true } : {}), ...(open.some((o) => o.what === 'i') ? { italic: true } : {}), ...(open.some((o) => o.what === 'u') ? { underline: true } : {}) };
+	};
 	const add = (t: string) => {
-		if (!t) return;
-		const color = [...open].reverse().find((o) => o.what === 'color' && o.arg in COLORS)?.arg as CardColor | undefined;
-		parts.push({ text: t, ...(color ? { color } : {}), ...(open.some((o) => o.what === 'b') ? { bold: true } : {}), ...(open.some((o) => o.what === 'i') ? { italic: true } : {}), ...(open.some((o) => o.what === 'u') ? { underline: true } : {}) });
+		if (t) parts.push({ text: t, ...addStyle() });
 	};
 	function run(list: Node[]) {
 		const depth = open.length; // a style left open ends with its block
 		for (const n of list) {
 			if (n.t === 'text') add(n.s);
-			else if (n.t === 'out') add(out(n.s) ?? `{${n.s}}`);
+			else if (n.t === 'out') {
+					const g = graphOf(device, n.s);
+					if (g) parts.push({ text: '', graph: g, ...(addStyle()) });
+					else add(out(n.s) ?? `{${n.s}}`);
+				}
 			else if (n.t === 'span') {
 				if (n.on) open.push({ what: n.what, arg: n.arg });
 				else { const i = open.map((o) => o.what).lastIndexOf(n.what); if (i >= 0) open.splice(i, 1); }
 			} else if (n.t === 'set') {
 				if (n.what === 'hide') res.hide = true;
-				else if (n.what === 'color' && n.arg in COLORS) res.color = n.arg as CardColor;
-				else if (n.what === 'icon') res.icon = n.arg;
+				else if (n.what === 'color' && isColor(n.arg)) res.color = n.arg;
+				else if (n.what === 'bg' && isColor(n.arg)) res.bg = n.arg;
+				else if (n.what === 'fill' && isColor(n.arg)) res.fill = n.arg;
+					else if (n.what === 'icon') res.icon = n.arg;
 			} else {
 				const b = n.branches.find((x) => {
 					try { return x.cond === null || truthy(x.cond(get)); } catch { return false; }
@@ -261,9 +317,9 @@ export function renderTemplate(template: string, device: Device, e: Entity | und
 	run(nodes);
 	if (parts.length) parts[0].text = parts[0].text.trimStart();
 	if (parts.length) parts[parts.length - 1].text = parts[parts.length - 1].text.trimEnd();
-	const visible = parts.filter((p) => p.text);
+	const visible = parts.filter((p) => p.text || p.graph);
 	res.text = visible.map((p) => p.text).join('');
-	if (visible.some((p) => p.color || p.bold || p.italic || p.underline)) res.parts = visible;
+	if (visible.some((p) => p.graph || p.color || p.size || p.bold || p.italic || p.underline)) res.parts = visible;
 	return res;
 }
 
@@ -282,6 +338,22 @@ export function ruleMatches(rule: CardRule, device: Device, slot: CardSlot): boo
 	}
 }
 
+/** What a component's text box shows before anybody wrote anything: the template that gives the look the component
+ * has now, so there is a working example to learn from and change. Nothing is saved until it is edited. A switch and a
+ * knob show no text, so theirs is empty. */
+export function defaultTemplate(slot: CardSlot, device: Device, source: Device = device): string {
+	const e = fieldsOf(source).find((x) => x.key === slot.key);
+	// a graph is written as what it draws: {device.brightness.history}
+	if (e && slot.component === 'value' && ['line', 'bars', 'spark'].includes(slot.style ?? '')) return `{${source.id === device.id ? fieldName(device, e) : otherRef(source, e)}.history}`;
+	if (!e || slot.component === 'text' || slot.component === 'switch' || slot.component === 'knob') return '';
+	if (slot.component === 'button') return slot.label || (slot.action ? slot.action.replace(/_press$/, '').replaceAll('_', ' ') : e.name.replace(/^Button\s*/i, '') || e.name);
+	const field = source.id === device.id ? fieldName(device, e) : otherRef(source, e);
+	// on / off fields light up: green for motion, amber for the rest
+	if (typeof e.state === 'boolean' && slot.component === 'value')
+		return `{if ${field} == true}\n{color ${isMotion(e) ? 'success' : 'warning'}}{${field}}\n{:else}\n{${field}}\n{/if}`;
+	return `{${field}}`;
+}
+
 /** The old rules as a template that does the same. */
 export function rulesToTemplate(slot: CardSlot, device: Device): string {
 	const lit = (v: string | number) => (typeof v === 'number' || /^-?\d+(\.\d+)?$/.test(v) ? String(v) : `'${String(v).replace(/'/g, '')}'`);
@@ -298,12 +370,19 @@ export function rulesToTemplate(slot: CardSlot, device: Device): string {
 	return `${parts.join('')}{:else}\n${slot.template ?? (slot.key ? '{value}' : '')}\n{/if}`;
 }
 
+/** The CSS for a component's background colour (a solid mix, so it covers whatever the component draws behind it). */
+export const backgroundStyle = (c?: string) => (!c ? '' : isHex(c) ? `background:${c};` : `background: color-mix(in oklab, var(--color-${c}) 35%, var(--color-base-100));`);
+
 export type Shown = {
+	/** the component's own background colour ({bg success}) */
+	bg?: string;
+	/** the colour of what fills or draws (a slider's or bar's fill, a gauge, a graph, the power button when on): {fill success} */
+	fill?: string;
 	/** the text in stretches of their own look, when the template styles words */
 	parts?: Part[];
 	/** the text to show instead of the field's own; undefined: show the field as usual */
 	text?: string;
-	color?: CardColor;
+	color?: string;
 	icon?: string;
 	hide: boolean;
 	/** a mistake in the template, for the designer to point out */
@@ -311,14 +390,17 @@ export type Shown = {
 };
 
 /** Apply the component's text template (and, for designs from before templates had blocks, its first matching rule). */
-export function resolve(slot: CardSlot, device: Device, now: number): Shown {
-	const e = device.entities.find((x) => x.key === slot.key);
+export function resolve(slot: CardSlot, device: Device, now: number, from: Device = device): Shown {
+	// the component's own field may belong to another device; `device` in the text stays the card's device
+	const e = fieldsOf(from).find((x) => x.key === slot.key);
 	const rule = (slot.rules ?? []).find((r) => ruleMatches(r, device, slot));
 	const source = rule?.then.text ?? slot.template;
 	const r = source !== undefined ? renderTemplate(source, device, e, slot, now) : undefined;
 	return {
 		text: r?.text,
 		parts: rule ? undefined : r?.parts,
+		bg: rule ? undefined : r?.bg,
+		fill: rule ? undefined : r?.fill,
 		color: rule?.then.color ?? r?.color ?? slot.color,
 		icon: rule?.then.icon ?? r?.icon,
 		hide: !!rule?.then.hide || !!r?.hide,
