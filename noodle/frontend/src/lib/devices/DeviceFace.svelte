@@ -6,6 +6,7 @@
 	import LightFace from './LightFace.svelte';
 	import MotionFace from './MotionFace.svelte';
 	import SwitchFace from './SwitchFace.svelte';
+	import ThermostatFace from './ThermostatFace.svelte';
 	import { deviceKind } from './kinds.ts';
 
 	/** The control or reading that matters most, chosen by what the device is. One place that decides. size "tile"
@@ -20,7 +21,8 @@
 {:else if kind === 'motion'}<MotionFace {device} {size} />
 {:else if kind === 'contact'}<ContactFace {device} {size} />
 {:else if size === 'tile'}
-	{#if kind === 'button'}<ButtonFace {device} />
+	{#if kind === 'thermostat'}<ThermostatFace {device} />
+	{:else if kind === 'button'}<ButtonFace {device} />
 	{:else if kind === 'light'}<LightFace {device} />
 	{:else if kind === 'switch'}<SwitchFace {device} />
 	{:else}<p class="flex h-12 items-center text-sm opacity-70">{headline(device)}</p>

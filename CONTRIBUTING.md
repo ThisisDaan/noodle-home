@@ -4,7 +4,7 @@ Thanks for helping make Noodle better. It is free software, licensed under the *
 
 ## Good first contributions
 
-- **A new integration.** Each one is a single module in `noodle/backend/noodle/plugins/`; the README section "Writing an integration" has a complete example.
+- **A new integration.** Each one is a single folder in `noodle/backend/noodle/plugins/` (`plugin.py`, `adapter.py`); [docs/integrations.md](docs/integrations.md) has a complete example.
 - **Flow examples** for `noodle/backend/noodle/examples/flows/` (use placeholder device ids, English text and `enabled: false`).
 - **Bug reports** with what you expected, what happened, and the log lines from the hub (System page, or `docker logs`).
 - **Translations and wording** in the interface.

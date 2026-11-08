@@ -3,6 +3,9 @@
 	import { page } from '$app/state';
 	import { api, ApiError } from '#lib/api.ts';
 	import DeviceSheet from '#lib/DeviceSheet.svelte';
+	import CardDesigner from '#lib/CardDesigner.svelte';
+	import CombineDialog from '#lib/CombineDialog.svelte';
+	import CustomDeviceDialog from '#lib/CustomDeviceDialog.svelte';
 	import GroupDialog from '#lib/GroupDialog.svelte';
 	import Icon from '#lib/Icon.svelte';
 	import Logo from '#lib/Logo.svelte';
@@ -142,5 +145,8 @@
 
 	<DeviceSheet />
 	<GroupDialog />
+	<CombineDialog />
+	<CardDesigner />
+	<CustomDeviceDialog />
 	{#if status.wizard}<Wizard onfinish={refresh} />{/if}
 {/if}

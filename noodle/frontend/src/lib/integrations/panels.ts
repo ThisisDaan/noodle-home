@@ -1,6 +1,7 @@
 import type { Component } from 'svelte';
 import BlePanel from './BlePanel.svelte';
 import DirigeraPanel from './DirigeraPanel.svelte';
+import HuePanel from './HuePanel.svelte';
 import LanPanel from './LanPanel.svelte';
 import LifxPanel from './LifxPanel.svelte';
 import LocationPanel from './LocationPanel.svelte';
@@ -13,6 +14,7 @@ import type { PanelProps } from './types.ts';
 export const PANELS: Record<string, Component<PanelProps>> = {
 	ble: BlePanel,
 	dirigera: DirigeraPanel,
+	hue: HuePanel,
 	lan: LanPanel,
 	lifx: LifxPanel,
 	location: LocationPanel,

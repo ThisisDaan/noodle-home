@@ -69,9 +69,10 @@ class Api(private val prefs: Prefs) {
 
     suspend fun command(
         deviceId: String, key: String, on: Boolean? = null, brightness: Int? = null,
-        toggle: Boolean = false, value: Double? = null,
+        toggle: Boolean = false, value: Double? = null, mode: String? = null,
     ) {
         val body = buildJsonObject {
+            mode?.let { put("mode", JsonPrimitive(it)) }
             on?.let { put("on", JsonPrimitive(it)) }
             brightness?.let { put("brightness", JsonPrimitive(it)) }
             if (toggle) put("toggle", JsonPrimitive(true))

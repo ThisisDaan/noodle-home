@@ -1,6 +1,8 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
+	import CardBody from './devices/CardBody.svelte';
 	import DeviceFace from './devices/DeviceFace.svelte';
+	import { defaultDesign } from './devices/cardDesign.ts';
 	import TileSubtitle from './devices/TileSubtitle.svelte';
 	import { motionActive } from './devices/kinds.ts';
 	import { iconFor, isOn, type Device } from './api';
@@ -9,25 +11,33 @@
 	type Props = {
 		device: Device;
 		editing?: boolean;
+		/** Faded, e.g. a hidden device while editing the dashboard. */
+		dim?: boolean;
 		first?: boolean;
 		last?: boolean;
 		onnudge?: (delta: number) => void;
 		ondragstart?: () => void;
 		ondrop?: () => void;
 	};
-	let { device, editing = false, first = false, last = false, onnudge, ondragstart, ondrop }: Props = $props();
+	let { device, editing = false, dim = false, first = false, last = false, onnudge, ondragstart, ondrop }: Props = $props();
 
 	let dragging = $state(false);
 	let over = $state(false);
 	const lit = $derived(isOn(device) || motionActive(device));
+	// Every card is made of components (devices/cardDesign.ts): the saved design, else the device's own look written
+	// as one. Only a remote's buttons have no such look yet and keep DeviceFace.
+	const saved = $derived(layout.cards[device.id]);
+	const design = $derived(layout.designFor(device) ?? defaultDesign(device));
 </script>
 
 <!-- Every card has the same structure and height: the name with one line under it, and a bottom row (DeviceFace)
      that is always 3rem high. Battery and other properties are in the device's sheet, not here. -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-	class="tile group relative flex flex-col justify-between gap-3 p-3.5"
-	class:h-36={!editing}
+	class="tile card-span group relative flex flex-col justify-between gap-3 p-3.5"
+	style="--cw: {design?.w ?? 1}; --ch: {design?.h ?? 1};"
+	class:card-wide={(design?.w ?? 1) >= 2}
+	class:opacity-40={dim}
 	class:is-on={lit}
 	class:is-dragging={dragging}
 	class:is-over={over}
@@ -71,7 +81,11 @@
 		{/if}
 	</div>
 
-	{#if !editing}<div class="relative z-10"><DeviceFace {device} size="tile" /></div>{/if}
+	{#if !editing}
+		<div class="relative z-10 {design ? 'min-h-0 grow' : ''}">
+			{#if design}<CardBody {device} {design} labelled={!!saved} />{:else}<DeviceFace {device} size="tile" />{/if}
+		</div>
+	{/if}
 
 	{#if editing}
 		<div class="border-base-content/10 relative z-10 flex items-center gap-1 border-t pt-2">

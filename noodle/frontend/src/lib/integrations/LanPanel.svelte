@@ -4,7 +4,7 @@
 
 	/** The devices of an integration that is reached by address (Shelly, WLED, Kasa, Nanoleaf, Sonos): the list,
 	 * and a way to add one by its IP address. Searching is the Search button of the page. */
-	let { item, onchange }: PanelProps = $props();
+	let { item, onchange, adding = false }: PanelProps = $props();
 	let busy = $state(false);
 	let error = $state('');
 	let host = $state('');
@@ -26,7 +26,7 @@
 	const remove = (key: string) => run(() => api<Integration>(`/${item.id}/devices/${encodeURIComponent(key)}`, { method: 'DELETE' }));
 </script>
 
-{#if item.devices?.length}
+{#if !adding && item.devices?.length}
 	<div class="flex flex-col gap-1">
 		<h3 class="text-xs font-semibold tracking-wide uppercase opacity-60">Your devices</h3>
 		{#each item.devices as d (d.key)}
@@ -39,6 +39,7 @@
 		{/each}
 	</div>
 {/if}
+{#if adding}
 <form class="flex flex-col gap-1" onsubmit={(e) => { e.preventDefault(); if (host.trim()) add(); }}>
 	<label class="floating-label"><span>Add by IP address</span>
 		<span class="join w-full">
@@ -47,4 +48,5 @@
 		</span></label>
 	{#if item.add_hint}<p class="text-xs opacity-60">{item.add_hint}</p>{/if}
 </form>
+{/if}
 {#if error}<div role="alert" class="alert alert-error alert-soft text-sm">{error}</div>{/if}

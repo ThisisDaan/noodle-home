@@ -4,7 +4,7 @@
 	import { PANELS } from './panels.ts';
 	import type { Integration } from './types.ts';
 
-	let { item, onchange, onremove, removable = true, formId, hideActions = false, onsaved }: {
+	let { item, onchange, onremove, removable = true, formId, hideActions = false, onsaved, devicesOnly = false }: {
 		item: Integration;
 		/** The integration's new state after saving, adding or removing. */
 		onchange: (updated: Integration) => void;
@@ -13,9 +13,13 @@
 		/** Set-up dialog: the dialog has the buttons (a submit button with form={formId}); `onsaved` runs after a save that connected. */
 		formId?: string;
 		hideActions?: boolean;
+		/** Adding devices to something that is already set up: only the search and the way to add, no settings. */
+		devicesOnly?: boolean;
 		onsaved?: (saved: Integration) => void;
 	} = $props();
 
+	// Finding and adding devices happens in the Add dialog (removable is false there); an added integration's card is only for settings and removing.
+	const showSearch = $derived(item.searchable && !removable);
 	const Panel = $derived(item.panel ? PANELS[item.panel] : undefined);
 
 	let values = $state<Record<string, string>>({});
@@ -52,21 +56,28 @@
 	}
 </script>
 
-<form id={formId} class="flex flex-col gap-3" onsubmit={(e) => { e.preventDefault(); save(); }}>
-	{#if !item.custom_form}<p class="text-sm opacity-70">{item.help}</p>{/if}
+<form id={formId} class="flex flex-col gap-3" onsubmit={(e) => {
+		e.preventDefault();
+		// A form inside a panel (pair, add by address) bubbles its submit up to here: only this form's own submit saves.
+		if (e.target === e.currentTarget) save();
+	}}>
+	{#if !devicesOnly}<p class="text-sm opacity-70">{item.help}</p>{/if}
 
-	{#each item.custom_form ? [] : item.fields.filter((f) => !f.hidden && !f.advanced) as f (f.key)}
+	{#if showSearch}<Discover {item} {onchange} />{/if}
+	{#if showSearch && !devicesOnly && item.fields.some((f) => !f.hidden && !f.advanced)}
+		<div class="divider my-0 text-xs opacity-60">Details</div>
+	{/if}
+	{#each devicesOnly ? [] : item.fields.filter((f) => !f.hidden && !f.advanced) as f (f.key)}
 		<label class="floating-label">
-			<span>{f.label}{f.secret && f.set ? ' (saved, leave empty to keep)' : ''}</span>
-			<input class="input w-full" bind:value={values[f.key]} placeholder={f.label} autocomplete="off"
+			<span>{f.label}{f.secret && f.set ? ' (saved: leave empty to keep it)' : ''}</span>
+			<input class="input w-full" bind:value={values[f.key]} placeholder={f.secret && f.set ? '••••••••••••' : f.label} autocomplete="off"
 				type={f.secret ? 'password' : 'text'} />
 		</label>
 		{#if f.help}<p class="-mt-2 text-xs opacity-60">{f.help}</p>{:else if f.placeholder && !f.secret}<p class="-mt-2 text-xs opacity-50">Example: {f.placeholder}</p>{/if}
 	{/each}
 
-	{#if item.searchable}<Discover {item} {onchange} />{/if}
-	{#if Panel}<Panel {item} {onchange} />{/if}
-	{#if !item.custom_form && item.fields.some((f) => f.advanced)}
+	{#if Panel}<Panel {item} {onchange} adding={!removable} {devicesOnly} />{/if}
+	{#if !devicesOnly && item.fields.some((f) => f.advanced)}
 		<details class="bg-base-200 rounded-box p-3">
 			<summary class="cursor-pointer text-sm font-medium">Advanced</summary>
 			<div class="mt-3 flex flex-col gap-3">
@@ -89,7 +100,7 @@
 		{#if removable && !item.always}
 			<button type="button" class="btn btn-ghost btn-sm text-error mr-auto" onclick={remove}>Remove</button>
 		{/if}
-		{#if item.fields.length && !item.custom_form}
+		{#if item.fields.some((f) => !f.hidden)}
 			<button class="btn btn-primary btn-sm" disabled={busy}>
 				{#if busy}<span class="loading loading-spinner loading-xs"></span>{/if}Save
 			</button>

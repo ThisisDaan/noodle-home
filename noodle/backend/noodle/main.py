@@ -6,6 +6,7 @@ import asyncio
 import inspect
 import json
 import logging
+import re
 import time
 import types
 from contextlib import asynccontextmanager
@@ -36,6 +37,9 @@ zigbee, matter, hue, phone, groups = (ADAPTERS[s] for s in ("zigbee", "matter", 
 for adapter in ADAPTERS.values():
     hub.register(adapter)
 flows = FlowEngine(hub, store)
+for adapter in ADAPTERS.values():
+    if hasattr(adapter, "attach_flows"):  # adapters that write flows
+        adapter.attach_flows(flows)
 discovery = Discovery(hub)
 adopt_hue_buttons(flows)
 retire_thermostat(flows)
@@ -71,6 +75,7 @@ async def _apply_settings(changed: set[str]) -> None:
             continue
         running = plugin.source in tasks and not tasks[plugin.source].done()
         want = not plugin.gated or plugin.id in added
+        # `forget` doubles as the list of keys that belong to this plugin besides its fields
         touched = any(k in changed for k in [*(f.key for f in plugin.fields), *plugin.forget])
         if want and (touched or (plugin.gated and not running)):
             await restart_adapter(plugin.source)
@@ -432,6 +437,34 @@ def remove_area(name: str) -> list[str]:
 WIDGET_TYPES = {"status", "favourites", "rooms", "flows", "sensor"}
 DEFAULT_WIDGETS = [{"type": "status"}, {"type": "favourites"}, {"type": "rooms"}]
 DEVICE_GROUPS = {"room", "type", "source", "none"}
+# How a device's card is designed (see the frontend CardDesigner): a size in dashboard cells (w x h) and components
+# placed anywhere on the card's fine grid (4 columns per cell wide, 2 rows per cell high), each with its own x, y, w, h
+# and a display style. (frontend devices/cardDesign.ts must say the same.)
+CARD_MAX = (4, 4)
+CARD_PER_CELL = (4, 2)
+CARD_COMPONENTS = {"switch", "value", "dial", "slider", "text", "button", "knob"}  # text: a label that needs no field
+# Text, format and rules of a component (frontend devices/cardText.ts): a text template with {tokens}, number format,
+# text style, and "when field <op> value then text / colour / icon / hide" rules (first match wins).
+CARD_COLORS = {"primary", "secondary", "accent", "success", "warning", "error", "info", "neutral"}
+CARD_ICONS = {"bulb", "plug", "thermo", "motion", "door", "gauge", "star", "eye", "eyeoff", "check", "close", "battery", "wifi",
+              "power", "clock", "bell", "bolt", "home", "pause"}
+# a colour is a named one or a hex / rgb() / hsl() value (frontend cardText.ts isHex)
+_CARD_CSS_COLOR = re.compile(r"^(#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|(rgb|rgba|hsl|hsla)\(\s*[0-9.,%\s/]+(deg)?[0-9.,%\s/]*\))$", re.I)
+
+
+def _card_color(value) -> bool:
+    return isinstance(value, str) and (value in CARD_COLORS or bool(_CARD_CSS_COLOR.match(value)))
+
+
+CARD_OPS = {"is", "not", "above", "below", "between"}
+CARD_ALIGN = {"left", "center", "right"}
+CARD_MAX_RULES = 8
+CARD_STYLES = {"text-s", "text-m", "text-l", "chip", "icon", "gauge", "bar", "line", "bars", "spark"}
+CARD_HOURS = {1, 6, 24, 72, 168}
+# The first card designs: a size name and slots by number. Still read (once), and written the new way.
+_OLD_CARD_SIZES = {"small": (2, 1, 1, 1), "wide": (4, 1, 2, 1), "large": (4, 3, 2, 2)}  # cols, rows, new w, new h
+_OLD_CARD_COMPONENTS = {"switch": (1, 1), "value": (1, 1), "dial": (2, 1), "slider": (1, 1), "graph": (2, 2)}
+CARD_KINDS = {"light", "switch", "button", "motion", "contact", "climate", "thermostat", "generic"}  # frontend deviceKind
 DEVICE_SORTS = {"name", "recent"}
 
 
@@ -442,6 +475,142 @@ class LayoutBody(BaseModel):
     order: list[str] = Field(default_factory=list, max_length=1000)
     widgets: list[dict] | None = Field(default=None, max_length=50)
     devices_view: dict | None = None
+    cards: dict | None = None
+    card_defaults: dict | None = None
+
+
+def _upgrade_card(design: dict) -> dict:
+    """A first-version design (`size` + slots by number) as the current one. Safe to run on a current design: it
+    has no `size`, so it comes back as it was."""
+    # A leftover `size` next to a current w/h (the file writer merges into what was there) must not trigger this.
+    if design.get("size") not in _OLD_CARD_SIZES or "w" in design or "h" in design:
+        return design
+    cols, rows, w, h = _OLD_CARD_SIZES[design["size"]]
+    fine_cols, fine_rows = w * CARD_PER_CELL[0], h * CARD_PER_CELL[1]
+    slots = []
+    for slot in design.get("slots") if isinstance(design.get("slots"), list) else []:
+        at = slot.get("at") if isinstance(slot, dict) else None
+        if isinstance(at, bool) or not isinstance(at, int) or slot.get("component") not in _OLD_CARD_COMPONENTS:
+            continue
+        sw, sh = _OLD_CARD_COMPONENTS[slot["component"]]
+        x, y = at % cols, at // cols
+        # old slots -> fine cells: stretch each row/column range, so neighbours stay neighbours and never overlap
+        x0, x1 = x * fine_cols // cols, (x + sw) * fine_cols // cols
+        y0, y1 = y * fine_rows // rows, (y + sh) * fine_rows // rows
+        item = {**slot, "x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0}
+        item.pop("at")
+        if slot["component"] == "graph":
+            item.update(component="value", style="line")
+        slots.append(item)
+    return {"w": w, "h": h, "slots": slots}
+
+
+def _clean_rules(raw) -> list[dict]:
+    """The if/then rules of one component that make sense: a known comparison, and a result that does something."""
+    rules = []
+    for rule in raw[:CARD_MAX_RULES] if isinstance(raw, list) else []:
+        then = rule.get("then") if isinstance(rule, dict) else None
+        if not isinstance(then, dict) or rule.get("op") not in CARD_OPS:
+            continue
+        value = rule.get("value")
+        number = isinstance(value, (int, float)) and not isinstance(value, bool)
+        if not (number or isinstance(value, str)):
+            continue
+        result = {}
+        if isinstance(then.get("text"), str):
+            result["text"] = then["text"][:200]
+        if _card_color(then.get("color")):
+            result["color"] = then["color"]
+        if then.get("icon") in CARD_ICONS:
+            result["icon"] = then["icon"]
+        if then.get("hide") is True:
+            result["hide"] = True
+        if not result:
+            continue
+        item = {"op": rule["op"], "value": value if number else value[:100], "then": result}
+        if isinstance(rule.get("field"), str) and rule["field"]:
+            item["field"] = rule["field"][:100]
+        v2 = rule.get("value2")
+        if rule["op"] == "between":
+            if not (isinstance(v2, (int, float)) and not isinstance(v2, bool)):
+                continue
+            item["value2"] = v2
+        rules.append(item)
+    return rules
+
+
+def _clean_cards(raw) -> dict:
+    """Keep the card designs that make sense: a size in cells, and components that sit inside the card's grid
+    without overlapping. Designs of the first version are upgraded on the way."""
+    if not isinstance(raw, dict):
+        return {}
+
+    def whole(value, low, high):
+        return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
+
+    clean = {}
+    for device_id, design in list(raw.items())[:1000]:
+        if not isinstance(device_id, str) or not isinstance(design, dict):
+            continue
+        design = _upgrade_card(design)
+        if not whole(design.get("w"), 1, CARD_MAX[0]) or not whole(design.get("h"), 1, CARD_MAX[1]):
+            continue
+        cols, rows = design["w"] * CARD_PER_CELL[0], design["h"] * CARD_PER_CELL[1]
+        taken: set[tuple[int, int]] = set()
+        slots = []
+        for slot in design.get("slots") if isinstance(design.get("slots"), list) else []:
+            if not isinstance(slot, dict) or slot.get("component") not in CARD_COMPONENTS:
+                continue
+            key = slot.get("key")
+            if slot["component"] == "text" and key is None:
+                key = ""  # a label has no field
+            x, y, w, h = (slot.get(k) for k in ("x", "y", "w", "h"))
+            if not isinstance(key, str) or (not key and slot["component"] != "text") or not (whole(x, 0, cols - 1) and whole(y, 0, rows - 1) and whole(w, 1, cols) and whole(h, 1, rows)):
+                continue
+            cells = {(x + i, y + j) for i in range(w) for j in range(h)}
+            if x + w > cols or y + h > rows or cells & taken:
+                continue
+            taken |= cells
+            item = {"x": x, "y": y, "w": w, "h": h, "component": slot["component"], "key": key[:100]}
+            if slot["component"] == "value" and isinstance(slot.get("device"), str) and slot["device"].strip():
+                item["device"] = slot["device"].strip()[:100]  # a reading of another device's field
+            if slot["component"] in ("value", "text") and slot.get("style") in CARD_STYLES:
+                item["style"] = slot["style"]
+            if isinstance(slot.get("template"), str) and slot["template"]:
+                item["template"] = slot["template"][:1000]
+            decimals = slot.get("decimals")
+            if whole(decimals, 0, 6):
+                item["decimals"] = decimals
+            if isinstance(slot.get("unit"), str):
+                item["unit"] = slot["unit"][:10]
+            for flag in ("thousands", "bold", "italic", "underline"):
+                if slot.get(flag) is True:
+                    item[flag] = True
+            if slot.get("bold") is False:  # plain weight, where bold is the look of a reading
+                item["bold"] = False
+            if slot.get("align") in CARD_ALIGN:
+                item["align"] = slot["align"]
+            if _card_color(slot.get("color")):
+                item["color"] = slot["color"]
+            rules = _clean_rules(slot.get("rules"))
+            if rules:
+                item["rules"] = rules
+            if slot.get("hours") in CARD_HOURS and not isinstance(slot.get("hours"), bool):
+                item["hours"] = slot["hours"]
+            if slot["component"] == "button" and isinstance(slot.get("action"), str) and slot["action"].strip():
+                item["action"] = slot["action"].strip()[:60]
+            if isinstance(slot.get("label"), str) and slot["label"].strip():
+                item["label"] = slot["label"].strip()[:40]
+            slots.append(item)
+        clean[device_id[:100]] = {"w": design["w"], "h": design["h"], "slots": slots}
+    return clean
+
+
+def _clean_card_defaults(raw) -> dict:
+    """The card design every device of a kind gets (by kind name) when it has none of its own."""
+    if not isinstance(raw, dict):
+        return {}
+    return _clean_cards({kind: design for kind, design in raw.items() if kind in CARD_KINDS})
 
 
 def _clean_widgets(raw) -> list[dict] | None:
@@ -489,6 +658,8 @@ def _read_layout() -> dict:
             layout[key] = [str(item) for item in saved[key]]
     layout["widgets"] = _clean_widgets(saved.get("widgets"))
     layout["devices_view"] = _clean_devices_view(saved.get("devices_view"))
+    layout["cards"] = _clean_cards(saved.get("cards"))
+    layout["card_defaults"] = _clean_card_defaults(saved.get("card_defaults"))
     return layout
 
 
@@ -503,7 +674,11 @@ def put_layout(body: LayoutBody) -> dict:
     if body.widgets is not None:
         values["widgets"] = _clean_widgets(body.widgets) or []
     values["devices_view"] = _clean_devices_view(body.devices_view)
-    dashboard.write(values)
+    # A save that does not mention cards (a page that was open before they existed) keeps the ones there are.
+    values["cards"] = _clean_cards(body.cards if body.cards is not None else _read_layout()["cards"])
+    saved = _read_layout()
+    values["card_defaults"] = _clean_card_defaults(body.card_defaults if body.card_defaults is not None else saved["card_defaults"])
+    dashboard.write(values, whole=("cards", "card_defaults"))  # a design taken away must leave the file too
     return _read_layout()
 
 
@@ -659,8 +834,14 @@ async def system() -> dict:
         result = plugin.system_info(ADAPTERS.get(plugin.source))
         return await result if inspect.isawaitable(result) else result
 
-    infos = await asyncio.gather(*(info(p) for p in PLUGINS))
-    return {p.id: i for p, i in zip(PLUGINS, infos) if i is not None}
+    infos = await asyncio.gather(*(info(p) for p in PLUGINS), return_exceptions=True)
+    out = {}
+    for p, i in zip(PLUGINS, infos):
+        if isinstance(i, Exception):  # one integration failing must not hide the others
+            log.warning("%s: system info failed: %s", p.id, i)
+        elif i is not None:
+            out[p.id] = i
+    return out
 
 
 @app.post("/api/update/check", dependencies=[Depends(require_login)])
@@ -680,7 +861,7 @@ async def update_install() -> dict:
 
 @app.get("/api/variables", dependencies=[Depends(require_login)])
 def variables() -> dict:
-    return store.variables()
+    return ADAPTERS["custom"].variables()
 
 
 @app.post("/api/hook/{token}/{name}")
@@ -694,6 +875,8 @@ def webhook(token: str, name: str) -> dict:
 
 @app.get("/api/notify", dependencies=[Depends(require_login)])
 def notify_info() -> dict:
+    # Behind login. Unlike `Field.secret` values, the ntfy topic is returned on purpose: the page shows it
+    # so the user can subscribe their phone to it.
     return {"configured": notify.configured(), "server": config.NTFY_URL, "topic": config.NTFY_TOPIC,
             "app_connections": notify.app_clients()}
 
@@ -757,7 +940,7 @@ async def save_integration(integration_id: str, body: SettingsBody) -> dict:
         raise HTTPException(400, f"One of the values is not valid: {err}")
     if "home_name" in values:
         hub.broadcast({"type": "home", "name": config.HOME_NAME})  # the sidebar and page title update
-    if item.adapter:
+    if item.adapter and (not item.gated or item.id in integrations.added_ids()):  # one that is not added is not running
         await restart_adapter(item.adapter)
         await asyncio.sleep(2.5)  # give it a moment to connect, so the answer shows the result
     return _describe(item)

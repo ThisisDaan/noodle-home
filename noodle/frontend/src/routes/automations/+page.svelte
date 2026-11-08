@@ -121,10 +121,10 @@
 {/if}
 
 <dialog bind:this={templateDialog} class="modal modal-bottom sm:modal-middle">
-	<div class="modal-box">
+	<div class="modal-box flex flex-col overflow-hidden">
 		{#if !template}
-			<h3 class="mb-3 text-lg font-bold">New flow</h3>
-			<div class="flex flex-col gap-2">
+			<h3 class="mb-3 shrink-0 text-lg font-bold">New flow</h3>
+			<div class="flex min-h-0 flex-col gap-2 overflow-y-auto">
 				<button class="btn btn-primary justify-start" onclick={blankFlow}><Icon name="plus" class="size-4" />Start from scratch</button>
 				<p class="mt-2 text-sm font-semibold opacity-70">Or start from a template</p>
 				{#each TEMPLATES as t (t.id)}
@@ -134,11 +134,11 @@
 					</button>
 				{/each}
 			</div>
-			<div class="modal-action"><button class="btn" onclick={() => templateDialog?.close()}>Cancel</button></div>
+			<div class="modal-action shrink-0"><button class="btn" onclick={() => templateDialog?.close()}>Cancel</button></div>
 		{:else}
-			<h3 class="text-lg font-bold">{template.title}</h3>
-			<p class="mb-4 text-sm opacity-70">{template.blurb}</p>
-			<div class="flex flex-col gap-3">
+			<h3 class="shrink-0 text-lg font-bold">{template.title}</h3>
+			<p class="mb-4 shrink-0 text-sm opacity-70">{template.blurb}</p>
+			<div class="flex min-h-0 flex-col gap-3 overflow-y-auto">
 				{#each options(template) as { pick, list } (pick.id)}
 					<label class="floating-label">
 						<span>{pick.label}</span>
@@ -149,7 +149,7 @@
 					</label>
 				{/each}
 			</div>
-			<div class="modal-action">
+			<div class="modal-action shrink-0">
 				<button class="btn" onclick={() => (template = null)}>Back</button>
 				<button class="btn btn-primary" disabled={!ready} onclick={useTemplate}>Create flow</button>
 			</div>
@@ -159,10 +159,10 @@
 </dialog>
 
 <dialog bind:this={aiDialog} class="modal modal-bottom sm:modal-middle">
-	<div class="modal-box max-w-xl">
-		<h3 class="mb-3 text-lg font-bold">Connect an AI</h3>
-		<ConnectAi />
-		<div class="modal-action"><button class="btn" onclick={() => aiDialog?.close()}>Close</button></div>
+	<div class="modal-box flex max-w-xl flex-col overflow-hidden">
+		<h3 class="mb-3 shrink-0 text-lg font-bold">Connect an AI</h3>
+		<div class="min-h-0 overflow-y-auto"><ConnectAi /></div>
+		<div class="modal-action shrink-0"><button class="btn" onclick={() => aiDialog?.close()}>Close</button></div>
 	</div>
 	<form method="dialog" class="modal-backdrop"><button>close</button></form>
 </dialog>

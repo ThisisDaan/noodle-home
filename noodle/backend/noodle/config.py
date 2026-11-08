@@ -71,6 +71,9 @@ BLE_SENSORS = dict(item.split("=", 1) for item in os.environ.get(
 # Philips Hue bridge: address and the application key from pairing (see the Integrations page).
 HUE_HOST = os.environ.get("HUE_HOST", "")
 HUE_KEY = os.environ.get("HUE_KEY", "")
+# More Hue bridges, as {address: application key}. The bridge in HUE_HOST/HUE_KEY (the only place a single bridge used to be
+# kept) is still read, so nothing has to be moved: see hue_bridges().
+HUE_BRIDGES: dict = dict(item.split("=", 1) for item in os.environ.get("HUE_BRIDGES", "").split(",") if "=" in item)
 
 # Integrations the user added on the Integrations page (empty = work it out from what is set up, see integrations.py).
 INTEGRATIONS: list[str] = []
@@ -85,7 +88,7 @@ THERMOSTAT_SENSOR_DEVICE = THERMOSTAT_SENSOR_KEY = THERMOSTAT_HEATER_DEVICE = TH
 # does not reach them. Nothing searches except when the user presses Search.
 LIFX_BULBS = dict(item.split("=", 1) for item in os.environ.get("LIFX_BULBS", "").split(",") if "=" in item)
 LIFX_HOSTS: list[str] = [h.strip() for h in os.environ.get("LIFX_HOSTS", "").split(",") if h.strip()]
-# Devices reached by address (adapters/lan.py): what the user added, as {key: address}. Nanoleaf also keeps the
+# Devices reached by address (plugins/lan/adapter.py): what the user added, as {key: address}. Nanoleaf also keeps the
 # token each one gave when it was paired.
 def _pairs(name: str) -> dict:
     return dict(item.split("=", 1) for item in os.environ.get(name, "").split(",") if "=" in item)
@@ -93,6 +96,13 @@ def _pairs(name: str) -> dict:
 
 SHELLY_DEVICES, WLED_DEVICES, KASA_DEVICES = _pairs("SHELLY_DEVICES"), _pairs("WLED_DEVICES"), _pairs("KASA_DEVICES")
 SONOS_DEVICES, NANOLEAF_DEVICES, NANOLEAF_TOKENS = _pairs("SONOS_DEVICES"), _pairs("NANOLEAF_DEVICES"), _pairs("NANOLEAF_TOKENS")
+WIZ_DEVICES, YEELIGHT_DEVICES = _pairs("WIZ_DEVICES"), _pairs("YEELIGHT_DEVICES")
+GOVEE_DEVICES, ROKU_DEVICES, YAMAHA_DEVICES = _pairs("GOVEE_DEVICES"), _pairs("ROKU_DEVICES"), _pairs("YAMAHA_DEVICES")
+# Pi-hole (6 or later): its address and the password of its web interface.
+PIHOLE_URL, PIHOLE_PASSWORD = os.environ.get("PIHOLE_URL", ""), os.environ.get("PIHOLE_PASSWORD", "")
+# UniFi presence: the controller, a local account, and the devices to follow as {mac: name}.
+UNIFI_URL, UNIFI_USERNAME, UNIFI_PASSWORD = os.environ.get("UNIFI_URL", ""), os.environ.get("UNIFI_USERNAME", ""), os.environ.get("UNIFI_PASSWORD", "")
+UNIFI_SITE, UNIFI_DEVICES = os.environ.get("UNIFI_SITE", "default"), _pairs("UNIFI_DEVICES")
 # Home Assistant (a long-lived token), the IKEA DIRIGERA hub (the token pairing gave), and the MQTT discovery topic.
 HA_URL, HA_TOKEN = os.environ.get("HA_URL", ""), os.environ.get("HA_TOKEN", "")
 DIRIGERA_HOST, DIRIGERA_TOKEN = os.environ.get("DIRIGERA_HOST", ""), os.environ.get("DIRIGERA_TOKEN", "")
@@ -120,7 +130,7 @@ SETTINGS: dict[str, tuple[str, str, str | None]] = {
     "timezone": ("TIMEZONE", "tz", "system"), "home_name": ("HOME_NAME", "str", "system"),
     "setup_done": ("SETUP_DONE", "bool", None),
     "public_url": ("PUBLIC_URL", "str", "system"), "docker_socket": ("DOCKER_SOCKET", "str", "system"),
-    "hue_host": ("HUE_HOST", "str", "hue"), "hue_key": ("HUE_KEY", "str", "hue"),
+    "hue_host": ("HUE_HOST", "str", "hue"), "hue_key": ("HUE_KEY", "str", "hue"), "hue_bridges": ("HUE_BRIDGES", "pairs", "hue"),
     "thermostat_id": ("THERMOSTAT_ID", "str", "thermostat"), "thermostat_name": ("THERMOSTAT_NAME", "str", "thermostat"),
     "thermostat_sensor_device": ("THERMOSTAT_SENSOR_DEVICE", "str", "thermostat"),
     "thermostat_sensor_key": ("THERMOSTAT_SENSOR_KEY", "str", "thermostat"),
@@ -129,17 +139,31 @@ SETTINGS: dict[str, tuple[str, str, str | None]] = {
     "lifx_hosts": ("LIFX_HOSTS", "list", "lifx"), "lifx_bulbs": ("LIFX_BULBS", "pairs", "lifx"),
     "shelly_devices": ("SHELLY_DEVICES", "pairs", "shelly"), "wled_devices": ("WLED_DEVICES", "pairs", "wled"),
     "kasa_devices": ("KASA_DEVICES", "pairs", "kasa"), "sonos_devices": ("SONOS_DEVICES", "pairs", "sonos"),
+    "govee_devices": ("GOVEE_DEVICES", "pairs", "govee"), "roku_devices": ("ROKU_DEVICES", "pairs", "roku"),
+    "yamaha_devices": ("YAMAHA_DEVICES", "pairs", "yamaha"),
+    "unifi_url": ("UNIFI_URL", "str", "unifi"), "unifi_username": ("UNIFI_USERNAME", "str", "unifi"),
+    "unifi_password": ("UNIFI_PASSWORD", "str", "unifi"), "unifi_site": ("UNIFI_SITE", "str", "unifi"),
+    "unifi_devices": ("UNIFI_DEVICES", "pairs", "unifi"),
+    "pihole_url": ("PIHOLE_URL", "str", "pihole"), "pihole_password": ("PIHOLE_PASSWORD", "str", "pihole"),
+    "wiz_devices": ("WIZ_DEVICES", "pairs", "wiz"), "yeelight_devices": ("YEELIGHT_DEVICES", "pairs", "yeelight"),
     "nanoleaf_devices": ("NANOLEAF_DEVICES", "pairs", "nanoleaf"), "nanoleaf_tokens": ("NANOLEAF_TOKENS", "pairs", "nanoleaf"),
     "ha_url": ("HA_URL", "str", "homeassistant"), "ha_token": ("HA_TOKEN", "str", "homeassistant"),
     "dirigera_host": ("DIRIGERA_HOST", "str", "dirigera"), "dirigera_token": ("DIRIGERA_TOKEN", "str", "dirigera"),
     "mqtt_discovery_prefix": ("MQTT_DISCOVERY_PREFIX", "str", "mqtt"),
     "ble_sensors": ("BLE_SENSORS", "pairs", "ble"), "integrations": ("INTEGRATIONS", "list", None),
 }
-SECRET_KEYS = {"hue_key", "ntfy_topic", "nanoleaf_tokens", "ha_token", "dirigera_token"}  # kept in secrets.yaml, not in settings.yaml
+SECRET_KEYS = {"hue_key", "hue_bridges", "ntfy_topic", "nanoleaf_tokens", "ha_token", "dirigera_token", "pihole_password", "unifi_password"}  # kept in secrets.yaml, not in settings.yaml
 _DEFAULTS = {attr: globals()[attr] for attr, _, _ in SETTINGS.values()} | {"LOCATION_SET": LOCATION_SET}
 _SETTINGS = YamlFile(CONFIG_DIR / "settings.yaml")
 _SECRETS = YamlFile(CONFIG_DIR / "secrets.yaml", private=True)
 _OLD_FILE = DATA_DIR / "settings.json"  # before settings were YAML
+
+
+def hue_bridges() -> dict[str, str]:
+    """Every paired Hue bridge, {address: application key}: the one from before there could be several (HUE_HOST and
+    HUE_KEY) and the ones in HUE_BRIDGES. Only reads, so there is nothing to migrate."""
+    old = {HUE_HOST: HUE_KEY} if HUE_HOST and HUE_KEY else {}
+    return {**old, **HUE_BRIDGES}
 
 
 def _text(value) -> str:
@@ -227,7 +251,7 @@ def _to_files(values: dict) -> None:
         else:
             plain[key] = value
     if plain:
-        _SETTINGS.write(plain)
+        _SETTINGS.write(plain, sections=True)  # saving one setting must not drop the others in its section
     if secrets:
         _SECRETS.write(secrets)
 

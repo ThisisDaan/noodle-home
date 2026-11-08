@@ -5,7 +5,7 @@ os.environ.setdefault("NOODLE_DATA", tempfile.mkdtemp())
 os.environ["NOODLE_AUTOMATIONS"] = "0"
 
 from noodle import config  # noqa: E402
-from noodle.adapters.zigbee import ZigbeeAdapter  # noqa: E402
+from noodle.plugins.zigbee.adapter import ZigbeeAdapter  # noqa: E402
 from noodle.hub import Hub  # noqa: E402
 from noodle.store import Store  # noqa: E402
 

@@ -311,6 +311,35 @@
 	{:else if type === 'action.log'}
 		<label class="floating-label"><span>Message ({'{count}'} = presses)</span>
 			<input class="input input-sm w-full" value={data.message} onchange={(e) => set({ message: e.currentTarget.value })} /></label>
+	{:else if type === 'action.write'}
+		{@const customDevices = live.list.filter((d) => d.source === 'custom')}
+		{@const target = live.list.find((d) => d.id === data.device_id)}
+		{@const field = target?.entities.find((e) => e.key === data.key)}
+		<label class="floating-label"><span>Custom device</span>
+			<select class="select select-sm w-full" value={data.device_id ?? ''}
+				onchange={(e) => set({ device_id: e.currentTarget.value, key: live.list.find((d) => d.id === e.currentTarget.value)?.entities[0]?.key ?? '', value: '' })}>
+				<option value="" disabled>Choose a device…</option>
+				{#each customDevices as d (d.id)}<option value={d.id}>{d.name}</option>{/each}
+			</select></label>
+		{#if !customDevices.length}<p class="text-xs opacity-60">No custom devices yet. On the Devices page, press <b>New custom device</b>.</p>{/if}
+		{#if target}
+			<label class="floating-label"><span>Field</span>
+				<select class="select select-sm w-full" value={data.key ?? ''} onchange={(e) => set({ key: e.currentTarget.value, value: '' })}>
+					{#each target.entities as e (e.key)}<option value={e.key}>{e.name}</option>{/each}
+				</select></label>
+			{#if field?.kind === 'switch'}
+				<label class="floating-label"><span>Set it to</span>
+					<select class="select select-sm w-full" value={data.value === 'off' ? 'off' : 'on'} onchange={(e) => set({ value: e.currentTarget.value })}>
+						<option value="on">On</option><option value="off">Off</option>
+					</select></label>
+			{:else if field?.kind === 'number'}
+				<label class="floating-label"><span>Set it to</span>
+					<input type="number" step="any" class="input input-sm w-full" value={data.value} onchange={(e) => set({ value: e.currentTarget.value })} /></label>
+			{:else}
+				<label class="floating-label"><span>Set it to ({'{now}'} = date/time)</span>
+					<input class="input input-sm w-full" value={data.value} onchange={(e) => set({ value: e.currentTarget.value })} /></label>
+			{/if}
+		{/if}
 	{:else if type === 'action.var'}
 		<label class="floating-label"><span>Variable</span>
 			<input class="input input-sm w-full" value={data.name} onchange={(e) => set({ name: e.currentTarget.value })} /></label>

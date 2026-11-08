@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from . import config
-from .adapters.hue import legacy_buttons
+from .plugins.hue.adapter import legacy_buttons
 from .flows import FlowEngine
 
 THERMOSTAT_KEYS = ["thermostat_id", "thermostat_name", "thermostat_sensor_device", "thermostat_sensor_key",

@@ -1,7 +1,7 @@
-"""What an integration plugin looks like. A plugin is one module in this package with a module-level
-`PLUGIN`: it says what the integration is called, which settings it has and how to build its adapter.
-The Integrations page and the start-up code are generated from the plugins, so adding an integration
-means adding a module here and nothing else."""
+"""What an integration plugin looks like. A plugin is one folder in this package (`plugin.py`, `adapter.py`, `__init__.py`)
+exposing a module-level `PLUGIN`: it says what the integration is called, which settings it has and how to build
+its adapter. The Integrations page and the start-up code are generated from the plugins. Adding an integration
+means adding a folder here, plus its setting keys in `config.SETTINGS` (and a panel in `panels.ts` if it wants one)."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ class Integration:
     status: Callable[[], bool | None] = lambda: None  # True connected, False not, None unknown
     icon: str = "plug"
     panel: str | None = None
-    custom_form: bool = False
+    support: str = "untested"  # "supported" or "untested", see Plugin.support
 
 
 @dataclass
@@ -74,21 +74,35 @@ class Node:
 
 
 class Plugin:
+    # --- Identity
     id: str = ""
     name: str = ""
     help: str = ""
     fields: list[Field] = []
+    # --- Lifecycle: when it runs, whether it can be added or removed
     gated: bool = False  # the adapter only runs while the integration is added
     always: bool = False  # not something to add or remove
     visible: bool = True  # False: runs, but has no entry on the Integrations page
+    # "supported": the maintainers run it on real devices. "untested": written from the device's protocol but not yet
+    # confirmed on real hardware (the Integrations page says so). New integrations start as untested.
+    support: str = "untested"
+    # --- What the Integrations page shows
     icon: str = "plug"  # name of an icon in the interface (frontend/src/lib/Icon.svelte)
     panel: str | None = None  # a component of the Integrations page shown with the settings (see lib/integrations/panels.ts)
-    custom_form: bool = False  # the panel replaces the settings form and the help text
-    forget: list[str] = []  # config keys cleared when the integration is removed
+    # Config keys cleared when the integration is removed. Also, when settings are edited in the files,
+    # `main._apply_settings` uses these (with `fields`) to decide which plugin a changed key belongs to.
+    forget: list[str] = []
+    # --- Adapter
     order: int = 100  # position on the page; lower comes first
     adapter_class: type | None = None
     source: str | None = None  # the adapter's `source`; None when there is no adapter
+    # --- Search and adding devices (see discovery.py)
     searchable: bool = False  # the page has a Search button; see search() and add_found(), and discovery.py
+    manual_add: bool = False  # devices are added without a search (a setup code): the panel has the form, shown in the Add device dialog
+    add_text: str = ""  # one line for the Add device list when there is no search, e.g. "Pair with a setup code"
+    # What Search/pairing adds: "devices" (lights, sensors...), "connection" (one of several, like a Hue bridge: its
+    # devices join by themselves) or "hub" (exactly one connection, like a DIRIGERA hub; set up once).
+    search_finds: str = "devices"
     noun: str = "devices"  # what a search looks for, for the interface: "bulbs", "sensors", ...
     search_hint: str = ""  # shown while searching: what to do on the device (put it in pairing mode, ...)
     press_hint: str = ""  # shown while waiting for the button, when add_found raises PressButton
@@ -99,8 +113,10 @@ class Plugin:
         return self.adapter_class(hub) if self.adapter_class else None
 
     def status(self, adapter) -> bool | None:
-        """True connected, False not, None unknown."""
-        return None
+        """True connected, False not, None unknown. By default read from the adapter's `connected` and `error`."""
+        if getattr(adapter, "connected", None):
+            return True
+        return False if getattr(adapter, "error", None) else None
 
     def preset(self) -> bool:
         """Counts as added before the user ever used the Integrations page, because it is already set up."""
@@ -112,17 +128,26 @@ class Plugin:
 
     async def search(self, adapter, seconds: float, found) -> None:
         """Look for new devices for `seconds`, only when the user asked. Call found(key, name=..., detail=...)
-        for each one. Nothing should look for devices outside of this."""
-        raise NotImplementedError
+        for each one. Nothing should look for devices outside of this. By default the adapter's own `search`."""
+        if not hasattr(adapter, "search"):
+            raise NotImplementedError
+        await adapter.search(seconds, found)
 
     async def add_found(self, adapter, key: str) -> None:
         """The user added one of the things search() found. Raise PressButton if the device first needs a button
         pressed; raise KeyError or ValueError with a message the user can read if it cannot be added. Things that
-        join by themselves (Zigbee) are reported as found(..., added=True) and need no add_found."""
-        raise NotImplementedError
+        join by themselves (Zigbee) are reported as found(..., added=True) and need no add_found.
+        By default the adapter's own `add_found`."""
+        if not hasattr(adapter, "add_found"):
+            raise NotImplementedError
+        await adapter.add_found(key)
 
     def on_remove(self, hub, adapter) -> None:
-        """Called when the user removes the integration, after its `forget` keys are cleared."""
+        """Called when the user removes the integration, after its `forget` keys are cleared. By default its devices
+        leave the hub; a plugin overrides this to clean up more."""
+        if self.source:
+            for device_id in [d.id for d in hub.devices.values() if d.source == self.source]:
+                hub.remove(device_id)
 
     def system_info(self, adapter) -> dict | None:
         """What the System page shows about this integration (None: nothing). May be a coroutine function."""
@@ -139,4 +164,4 @@ class Plugin:
     def describe(self, adapter) -> Integration:
         return Integration(self.id, self.name, self.help, list(self.fields), adapter=self.source, gated=self.gated,
                            always=self.always, status=lambda: self.status(adapter), icon=self.icon, panel=self.panel,
-                           custom_form=self.custom_form)
+                           support=self.support)

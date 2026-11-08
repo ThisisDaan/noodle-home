@@ -1,0 +1,152 @@
+import os
+import tempfile
+
+os.environ.setdefault("NOODLE_DATA", tempfile.mkdtemp())
+os.environ["NOODLE_AUTOMATIONS"] = "0"
+
+from noodle import main  # noqa: E402
+
+
+def slot(x, y, w, h, component="value", key="k", **more):
+    return {"x": x, "y": y, "w": w, "h": h, "component": component, "key": key, **more}
+
+
+def test_good_designs_are_kept():
+    design = {"d1": {"w": 2, "h": 1, "slots": [
+        slot(0, 0, 1, 2, "switch", "heating", label=" Heat "),
+        slot(1, 0, 3, 2, "dial", "target"),
+        slot(4, 0, 4, 2, "value", "status", style="chip"),
+        slot(4, 0, 1, 1, "value", "x", style="text-s")]}}  # covers the status: dropped
+    clean = main._clean_cards(design)["d1"]
+    assert clean["w"] == 2 and clean["h"] == 1
+    assert clean["slots"][0] == slot(0, 0, 1, 2, "switch", "heating", label="Heat")
+    assert [s["component"] for s in clean["slots"]] == ["switch", "dial", "value"]
+    assert clean["slots"][2]["style"] == "chip"
+
+
+def test_what_does_not_fit_is_dropped():
+    design = {"d": {"w": 1, "h": 1, "slots": [
+        slot(0, 0, 2, 2, key="a"),
+        slot(1, 1, 1, 1, key="b"),                  # overlaps a
+        slot(4, 0, 1, 1, key="c"),                  # outside a 4x2 grid
+        slot(2, 0, 3, 1, key="d"),                  # sticks out
+        slot(2, 0, 1, 1, "wheel", "e"),             # unknown component
+        {**slot(2, 0, 1, 1, key="f"), "x": True},
+        slot(2, 1, 1, 1, "switch", ""),             # no field
+        slot(2, 1, 1, 1, key="g", style="neon", hours=5)]},  # unknown style and hours are just left out
+        "bad": {"w": 9, "h": 1, "slots": []}, "worse": "x"}
+    clean = main._clean_cards(design)
+    assert set(clean) == {"d"} and [s["key"] for s in clean["d"]["slots"]] == ["a", "g"]
+    assert "style" not in clean["d"]["slots"][1] and "hours" not in clean["d"]["slots"][1]
+
+
+def test_first_version_designs_are_upgraded_and_stay_the_same_when_run_twice():
+    old = {"d1": {"size": "wide", "slots": [{"at": 0, "component": "switch", "key": "heating", "label": "Heat"},
+                                            {"at": 1, "component": "dial", "key": "target"},
+                                            {"at": 3, "component": "value", "key": "status"}]},
+           "d2": {"size": "large", "slots": [{"at": 0, "component": "graph", "key": "t"}, {"at": 2, "component": "switch", "key": "s"},
+                                             {"at": 8, "component": "slider", "key": "u"}]}}
+    once = main._clean_cards(old)
+    assert once["d1"]["w"] == 2 and once["d1"]["h"] == 1
+    assert [(s["x"], s["w"]) for s in once["d1"]["slots"]] == [(0, 2), (2, 4), (6, 2)]  # 4 old columns -> 8 fine ones
+    assert once["d1"]["slots"][0]["label"] == "Heat"
+    graph = once["d2"]["slots"][0]
+    assert graph["component"] == "value" and graph["style"] == "line" and (graph["w"], graph["h"]) == (4, 2)  # 2 of 3 old rows -> 2 of 4 fine ones
+    assert len(once["d2"]["slots"]) == 3  # nothing overlapped in the stretch
+    assert main._clean_cards(once) == once  # a second run changes nothing
+
+
+def test_a_layout_save_without_cards_keeps_the_cards(monkeypatch, tmp_path):
+    from noodle.yamlfile import YamlFile
+    monkeypatch.setattr(main, "dashboard", YamlFile(tmp_path / "dashboard.yaml"))
+    saved = main.put_layout(main.LayoutBody(cards={"d1": {"w": 1, "h": 1, "slots": [slot(0, 0, 4, 2, key="k")]}}))
+    assert saved["cards"]["d1"]["slots"][0]["key"] == "k"
+    again = main.put_layout(main.LayoutBody(rooms=["Study"]))  # an older page: no cards in the save
+    assert again["cards"]["d1"]["w"] == 1 and again["rooms"] == ["Study"]
+    removed = main.put_layout(main.LayoutBody(cards={}))
+    assert removed["cards"] == {}
+
+
+def test_text_format_and_rules_are_kept_when_they_make_sense():
+    rules = [
+        {"field": "presence", "op": "is", "value": "on", "then": {"text": "Home", "color": "success", "icon": "home"}},
+        {"op": "between", "value": 10, "value2": 20, "then": {"hide": True}},
+        {"op": "between", "value": 10, "then": {"hide": True}},         # no upper end
+        {"op": "above", "value": 5, "then": {"color": "neon"}},         # does nothing
+        {"op": "sorta", "value": 1, "then": {"text": "x"}},             # unknown comparison
+        {"op": "is", "value": True, "then": {"text": "x"}},             # a bool is not a value
+    ]
+    design = {"d": {"w": 2, "h": 2, "slots": [
+        slot(0, 0, 4, 2, key="temp", template=" {value} in {device}", decimals=1, unit="°", thousands=True, bold=True, align="right",
+             color="info", rules=rules),
+        slot(4, 0, 4, 2, "text", None, template="Hello", style="text-m"),   # a label needs no field
+        slot(0, 2, 1, 1, "value", None)]}}                                   # a reading does
+    clean = main._clean_cards(design)["d"]["slots"]
+    assert len(clean) == 2
+    first = clean[0]
+    assert first["template"] == " {value} in {device}" and first["decimals"] == 1 and first["unit"] == "°"
+    assert first["thousands"] and first["bold"] and first["align"] == "right" and first["color"] == "info"
+    assert [r["op"] for r in first["rules"]] == ["is", "between"]
+    assert first["rules"][0] == {"field": "presence", "op": "is", "value": "on", "then": {"text": "Home", "color": "success", "icon": "home"}}
+    assert clean[1]["component"] == "text" and clean[1]["key"] == "" and clean[1]["style"] == "text-m"
+    assert main._clean_cards({"d": {"w": 2, "h": 2, "slots": clean}}) == {"d": {"w": 2, "h": 2, "slots": clean}}  # stable
+
+
+def test_text_looks_italic_underline_and_plain_weight():
+    design = {"d": {"w": 2, "h": 1, "slots": [
+        slot(0, 0, 4, 2, "text", None, template="Hi", italic=True, underline=True, bold=False),
+        slot(4, 0, 4, 2, "text", None, template="Yo", italic=False, underline="yes", bold="no")]}}
+    clean = main._clean_cards(design)["d"]["slots"]
+    assert clean[0]["italic"] and clean[0]["underline"] and clean[0]["bold"] is False
+    assert not {"italic", "underline", "bold"} & clean[1].keys()
+    assert main._clean_cards({"d": {"w": 2, "h": 1, "slots": clean}})["d"]["slots"] == clean
+
+
+def test_leftover_size_key_does_not_wipe_a_current_design():
+    from noodle.main import _clean_cards
+
+    slot = {"x": 0, "y": 0, "w": 4, "h": 2, "component": "value", "key": "motion"}
+    out = _clean_cards({"d": {"size": "small", "w": 1, "h": 1, "slots": [slot]}})
+    assert len(out["d"]["slots"]) == 1 and "size" not in out["d"]
+
+
+def test_button_keeps_its_press():
+    clean = main._clean_cards({"d1": {"w": 1, "h": 1, "slots": [slot(0, 0, 1, 2, "button", "button", action=" on_press ")]}})["d1"]
+    assert clean["slots"] == [slot(0, 0, 1, 2, "button", "button", action="on_press")]
+
+
+def test_kind_defaults_keep_only_known_kinds():
+    good = {"w": 1, "h": 1, "slots": [slot(0, 0, 4, 2, "value", "presence", style="chip")]}
+    clean = main._clean_card_defaults({"motion": good, "spaceship": good, "light": "nope"})
+    assert list(clean) == ["motion"] and clean["motion"]["slots"][0]["key"] == "presence"
+    assert main._clean_card_defaults(None) == {}
+
+
+def test_hex_colours_survive_a_save():
+    slot = {"x": 0, "y": 0, "w": 2, "h": 2, "component": "value", "key": "t", "color": "#ff8800",
+            "rules": [{"op": "above", "value": 1, "then": {"color": "rgb(1, 2, 3)"}}]}
+    bad = {**slot, "x": 2, "color": "url(x)", "rules": []}
+    out = main._clean_cards({"d": {"w": 2, "h": 1, "slots": [slot, bad]}})["d"]["slots"]
+    assert out[0]["color"] == "#ff8800" and out[0]["rules"][0]["then"]["color"] == "rgb(1, 2, 3)"
+    assert "color" not in out[1]
+
+
+def test_a_removed_design_is_gone_from_the_file_after_the_save(monkeypatch, tmp_path):
+    from noodle.yamlfile import YamlFile
+    monkeypatch.setattr(main, "dashboard", YamlFile(tmp_path / "dashboard.yaml"))
+    design = {"w": 1, "h": 1, "slots": [slot(0, 0, 4, 2, key="k")]}
+    main.put_layout(main.LayoutBody(cards={"a": design, "b": design}, card_defaults={"light": design}))
+    main.put_layout(main.LayoutBody(cards={"b": design}, card_defaults={}))
+    again = main._read_layout()
+    assert list(again["cards"]) == ["b"] and again["card_defaults"] == {}
+
+
+def test_a_reading_can_show_another_devices_field():
+    design = {"d": {"w": 2, "h": 2, "slots": [
+        {"x": 0, "y": 0, "w": 4, "h": 2, "component": "value", "key": "temperature", "style": "line", "device": "other_1"},
+        {"x": 4, "y": 0, "w": 1, "h": 2, "component": "switch", "key": "state", "device": "other_1"},
+    ]}}
+    slots = main._clean_cards(design)["d"]["slots"]
+    assert slots[0]["device"] == "other_1"
+    assert "device" not in slots[1]  # only a reading takes another device's field
+    assert main._clean_cards({"d": {"w": 2, "h": 2, "slots": slots}})["d"]["slots"] == slots

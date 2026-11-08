@@ -7,10 +7,10 @@
 	import { live } from '#lib/live.svelte.ts';
 
 	// Loaded once; a flow setting a variable pushes the new values.
-	const vars = $derived(live.variables ?? {});
-	$effect(() => {
-		api<typeof vars>('/variables').then((v) => (live.variables = v)).catch(() => {});
-	});
+	const variablesDevice = $derived(live.list.find((d) => d.id === 'custom:variables'));
+	const vars = $derived(
+		Object.fromEntries((variablesDevice?.entities ?? []).map((e) => [e.name, { value: e.state == null ? '' : String(e.state), updated: variablesDevice?.last_seen ?? null }]))
+	);
 
 	const widgets = $derived(layout.activeWidgets);
 	const WIDGET_NAMES: Record<Widget['type'], string> = {
@@ -132,7 +132,7 @@
 {#if favorites.length}
 	<section class="mb-10">
 		<h2 class="mb-3 flex items-center gap-2 text-lg font-semibold"><Icon name="star" class="text-accent size-5 fill-current" />Favourites</h2>
-		<div class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3">
+		<div class="grid auto-rows-[minmax(9rem,auto)] grid-flow-dense grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3">
 			{#each favorites as device, i (device.id)}
 				<DeviceCard {device} {editing} first={i === 0} last={i === favorites.length - 1}
 					onnudge={(d) => layout.nudge(device.id, d, favorites.map((x) => x.id))}
@@ -170,7 +170,7 @@
 		</div>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
-			class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3"
+			class="grid auto-rows-[minmax(9rem,auto)] grid-flow-dense grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3"
 			class:min-h-28={editing}
 			ondragover={(e) => editing && e.preventDefault()}
 			ondrop={(e) => {
@@ -178,12 +178,10 @@
 			}}
 		>
 			{#each room.devices as device, i (device.id)}
-				<div class:opacity-40={layout.isHidden(device.id)}>
-					<DeviceCard {device} {editing} first={i === 0} last={i === room.devices.length - 1}
-						onnudge={(d) => layout.nudge(device.id, d, room.devices.map((x) => x.id))}
-						ondragstart={() => (dragId = device.id)}
-						ondrop={() => drop(room.area, device.id, room.devices)} />
-				</div>
+				<DeviceCard {device} {editing} dim={layout.isHidden(device.id)} first={i === 0} last={i === room.devices.length - 1}
+					onnudge={(d) => layout.nudge(device.id, d, room.devices.map((x) => x.id))}
+					ondragstart={() => (dragId = device.id)}
+					ondrop={() => drop(room.area, device.id, room.devices)} />
 			{:else}
 				<p class="text-sm opacity-60">Drop devices here.</p>
 			{/each}

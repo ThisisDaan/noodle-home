@@ -23,8 +23,13 @@ export type Integration = {
 	icon: string;
 	/** A component from panels.ts shown with the settings. */
 	panel: string | null;
-	/** The panel replaces the settings form and the help text. */
-	custom_form: boolean;
+			/** "supported": run on real devices by the maintainers. "untested": not yet confirmed on real hardware. */
+	support: 'supported' | 'untested';
+	/** What Search or pairing adds: devices, one of several connections (a Hue bridge) or a single hub. */
+	search_finds: 'devices' | 'connection' | 'hub';
+	/** Devices can be added to it from the Devices page (a search, or a setup code), and what to say about it. */
+	can_add: boolean;
+	add_text: string;
 	connected: boolean | null;
 	added: boolean;
 	always: boolean;
@@ -33,6 +38,7 @@ export type Integration = {
 	sensors?: Sensor[];
 	bulbs?: Bulb[];
 	devices?: LanDevice[];
+	bridges?: { host: string; connected: boolean; error: string | null }[];
 	add_hint?: string;
 	// IKEA DIRIGERA pairing
 	paired?: boolean;
@@ -51,6 +57,13 @@ export type Integration = {
 };
 
 /** What every panel gets: the integration, and a way to hand back its new state after a change. */
-export type PanelProps = { item: Integration; onchange: (updated: Integration) => void };
+export type PanelProps = {
+	item: Integration;
+	onchange: (updated: Integration) => void;
+	/** True in the Add dialog, where devices are added. An added integration's card only edits and removes. */
+	adding?: boolean;
+	/** True when adding devices to an integration that is already set up: no settings, no status, only how to add. */
+	devicesOnly?: boolean;
+};
 
 export const dot = (c: boolean | null) => (c === true ? 'status-success' : c === false ? 'status-error' : 'status-neutral');

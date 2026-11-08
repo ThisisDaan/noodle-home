@@ -2,7 +2,7 @@
 	import { api } from '../api.ts';
 	import type { Integration, PanelProps } from './types.ts';
 
-	let { item, onchange }: PanelProps = $props();
+	let { item, onchange, adding = false }: PanelProps = $props();
 	let busy = $state(false);
 	let error = $state('');
 
@@ -19,7 +19,7 @@
 	}
 </script>
 
-{#if item.bulbs?.length}
+{#if !adding && item.bulbs?.length}
 	<div class="flex flex-col gap-1">
 		<h3 class="text-xs font-semibold tracking-wide uppercase opacity-60">Your bulbs</h3>
 		{#each item.bulbs as bulb (bulb.mac)}

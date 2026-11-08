@@ -3,8 +3,8 @@ import struct
 
 import pytest
 
-from noodle.adapters import lifx
-from noodle.adapters.lifx import FULL, LifxAdapter
+from noodle.plugins.lifx import adapter as lifx
+from noodle.plugins.lifx.adapter import FULL, LifxAdapter
 from noodle.hub import Hub
 from noodle.store import Store
 

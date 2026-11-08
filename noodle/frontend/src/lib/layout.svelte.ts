@@ -1,4 +1,7 @@
 import { api } from './api';
+import type { Device } from './api';
+import { compatible, type CardDesign } from './devices/cardDesign.ts';
+import { deviceKind, type DeviceKind } from './devices/kinds.ts';
 import { placeBefore } from './order.ts';
 
 export type Widget = {
@@ -18,6 +21,10 @@ export type SavedLayout = {
 	/** null: the default cards */
 	widgets: Widget[] | null;
 	devices_view: DevicesView;
+	/** How devices' cards are designed, by device id (see devices/cardDesign.ts) */
+	cards?: Record<string, CardDesign>;
+	/** The card design every device of a kind gets when it has none of its own, by kind (devices/kinds.ts deviceKind) */
+	card_defaults?: Record<string, CardDesign>;
 };
 
 export const DEFAULT_WIDGETS: Widget[] = [{ type: 'status' }, { type: 'favourites' }, { type: 'rooms' }];
@@ -30,6 +37,8 @@ class Layout {
 	order = $state<string[]>([]);
 	widgets = $state<Widget[] | null>(null);
 	devicesView = $state<DevicesView>({ group_by: 'room', sort: 'name' });
+	cards = $state<Record<string, CardDesign>>({});
+	cardDefaults = $state<Record<string, CardDesign>>({});
 	editing = $state(false);
 	saving = $state(false);
 	#timer: ReturnType<typeof setTimeout> | undefined;
@@ -38,6 +47,8 @@ class Layout {
 	/** Take over a layout the server sends (the file was edited by hand). */
 	apply(s: SavedLayout) {
 		this.rooms = s.rooms;
+		this.cards = s.cards ?? {};
+		this.cardDefaults = s.card_defaults ?? {};
 		this.hidden = s.hidden;
 		this.favorites = s.favorites;
 		this.order = s.order;
@@ -69,6 +80,42 @@ class Layout {
 		this.#save();
 	}
 
+	/** Save how a device's card looks, or null to give it its own look back. */
+	setCard(deviceId: string, design: CardDesign | null) {
+		const next = { ...this.cards };
+		if (design) next[deviceId] = design;
+		else delete next[deviceId];
+		this.cards = next;
+		this.#save();
+	}
+
+	/** The design for every device of a kind (or null to remove it). Devices with a design of their own keep it. */
+	setKindDefault(kind: DeviceKind, design: CardDesign | null) {
+		const next = { ...this.cardDefaults };
+		if (design) next[kind] = design;
+		else delete next[kind];
+		this.cardDefaults = next;
+		this.#save();
+	}
+
+	/** The design a device's card has: its own, else its kind's default (only the components whose field this device
+	 * has), else null (the built-in look). */
+	designFor(device: Device): CardDesign | null {
+		const own = this.cards[device.id];
+		if (own) return own;
+		const shared = this.cardDefaults[deviceKind(device)];
+		if (!shared) return null;
+		// A device names its fields its own way (a Matter lamp's is light_1, not light): a component whose field this device
+		// has not takes the device's first field that suits it. One with nothing to show is left out.
+		const slots = shared.slots.flatMap((s) => {
+			if (s.component === 'text' || device.entities.some((e) => e.key === s.key)) return [s];
+			if (s.component === 'value') return [];
+			const e = device.entities.find((x) => compatible(s.component, x));
+			return e ? [{ ...s, key: e.key }] : [];
+		});
+		return slots.length ? { ...shared, slots } : null;
+	}
+
 	setDevicesView(patch: Partial<DevicesView>) {
 		this.devicesView = { ...this.devicesView, ...patch };
 		this.#save();
@@ -97,7 +144,9 @@ class Layout {
 						favorites: this.favorites,
 						order: this.order,
 						...(this.widgets ? { widgets: this.widgets } : {}),
-						devices_view: this.devicesView
+						devices_view: this.devicesView,
+						cards: this.cards,
+						card_defaults: this.cardDefaults
 					}
 				});
 			} finally {

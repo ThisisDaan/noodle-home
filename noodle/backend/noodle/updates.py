@@ -10,7 +10,7 @@ import re
 import httpx
 
 from . import __version__, config
-from .adapters import docker
+from . import dockerapi as docker
 
 REPO = config.UPDATE_REPO
 

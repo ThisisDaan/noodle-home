@@ -55,10 +55,11 @@ def _convert(value: Any, depth: int) -> Any:
     return value
 
 
-def _merge(target: CommentedMap, values: Mapping, replace: bool, depth: int) -> None:
+def _merge(target: CommentedMap, values: Mapping, replace: bool, depth: int, sections: bool = False) -> None:
     for key, value in values.items():
         current = target.get(key)
-        if isinstance(value, Mapping) and isinstance(current, CommentedMap) and not _is_leaf(value):
+        # sections=True: top-level keys are sections (settings.yaml), so a section holding only plain values is still merged
+        if isinstance(value, Mapping) and isinstance(current, CommentedMap) and (not _is_leaf(value) or (sections and depth == 0)):
             _merge(current, value, replace, depth + 1)
         elif key not in target or plain(current) != value:
             target[key] = _convert(value, depth + 1)
@@ -102,8 +103,9 @@ class YamlFile:
         """Edited, created or removed since the app last read or wrote it."""
         return self._current_stamp() != self._stamp
 
-    def write(self, values: Mapping, replace: bool = False) -> None:
-        """Put values in the file. replace=True makes the file hold exactly these values; otherwise other keys stay."""
+    def write(self, values: Mapping, replace: bool = False, sections: bool = False, whole: tuple[str, ...] = ()) -> None:
+        """Put values in the file. replace=True makes the file hold exactly these values; otherwise other keys stay.
+        sections=True keeps the other keys inside each top-level section too."""
         yaml = new_yaml()
         doc = None
         if self.path.exists():
@@ -113,7 +115,10 @@ class YamlFile:
                 doc = None
         if not isinstance(doc, CommentedMap):
             doc = CommentedMap()
-        _merge(doc, values, replace, 0)
+        for key in whole:  # these top-level keys are written as given: what is not in them any more is gone
+            if key in values and key in doc:
+                del doc[key]
+        _merge(doc, values, replace, 0, sections)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_name(self.path.name + ".tmp")
         with tmp.open("w", encoding="utf-8", newline="\n") as f:

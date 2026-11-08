@@ -11,7 +11,7 @@ from noodle import config, integrations, plugins  # noqa: E402
 
 def test_discover_order_and_unique_ids():
     found = plugins.discover()
-    assert [p.id for p in found if p.visible] == ["zigbee", "matter", "hue", "lifx", "shelly", "wled", "kasa", "sonos", "ble", "nanoleaf", "mqtt", "homeassistant", "dirigera", "ntfy", "system"]
+    assert [p.id for p in found if p.visible] == ["zigbee", "matter", "hue", "lifx", "shelly", "wled", "kasa", "wiz", "yeelight", "govee", "sonos", "roku", "yamaha", "ble", "nanoleaf", "mqtt", "homeassistant", "dirigera", "pihole", "unifi", "ntfy", "system"]
     assert len({p.id for p in found}) == len(found)
 
 
@@ -23,7 +23,7 @@ def test_plugin_fields_and_forget_are_known_settings():
 
 def test_every_adapter_source_is_registered():
     from noodle import main
-    assert set(main.ADAPTERS) == {"zigbee", "matter", "ble", "hue", "lifx", "group", "phone", "shelly", "wled", "kasa", "sonos", "nanoleaf", "mqtt", "homeassistant", "dirigera"}
+    assert set(main.ADAPTERS) == {"zigbee", "matter", "ble", "hue", "lifx", "group", "phone", "shelly", "wled", "kasa", "wiz", "yeelight", "govee", "roku", "yamaha", "pihole", "unifi", "sonos", "nanoleaf", "mqtt", "homeassistant", "dirigera", "combined", "custom"}
     assert main.ADAPTERS["zigbee"] is main.zigbee and main.hub.adapters.keys() >= main.ADAPTERS.keys()
 
 
@@ -86,7 +86,7 @@ def test_plugin_node_runs_through_the_engine(monkeypatch):
 def test_integrations_tell_the_page_which_panel_and_icon_to_use():
     from noodle import main
     described = {i.id: main._describe(i) for i in main._integrations()}
-    assert described["hue"]["panel"] is None and described["hue"]["searchable"] is True and described["hue"]["press_hint"]
+    assert described["hue"]["panel"] == "hue" and described["hue"]["searchable"] is True and described["hue"]["press_hint"]
     assert described["ble"]["panel"] == "ble" and "sensors" in described["ble"]
     assert described["ntfy"]["panel"] == "notify" and described["zigbee"]["panel"] == "zigbee" and described["matter"]["panel"] == "matter"
     assert all(d["icon"] for d in described.values())
@@ -96,7 +96,7 @@ def test_system_page_info_comes_from_the_plugins(monkeypatch):
     import asyncio
 
     from noodle import main
-    from noodle.adapters import otbr
+    from noodle.plugins.matter import otbr
 
     async def no_thread():
         return {"reachable": False}
@@ -220,7 +220,7 @@ def test_the_last_press_and_change_time_come_with_the_device():
 
 
 def test_bilresa_first_input_of_a_profile_turns_up():
-    from noodle.adapters.matter import REMOTE_LAYOUTS
+    from noodle.plugins.matter.adapter import REMOTE_LAYOUTS
     layout = REMOTE_LAYOUTS["BILRESA"]
     assert layout["roles"][0][0] == "Dimmer increase" and layout["roles"][1][0] == "Dimmer decrease"
     # listed as down, up, button
@@ -263,3 +263,102 @@ def test_dimmer_inputs_get_a_direction_whatever_the_brand_calls_them():
     assert role("up", "Brighter") == "increase" and role("down", "Dimmer") == "decrease"
     assert role("button_3", "Button") is None and role("on", "On") is None and role("off", "Off") is None
     assert Entity(key="up", kind="sensor", name="Up").role is None
+
+
+def test_every_plugin_says_how_well_it_is_supported():
+    assert {p.support for p in plugins.discover()} <= {"supported", "untested"}
+    by_id = {p.id: p.support for p in plugins.discover()}
+    assert by_id["zigbee"] == "supported" and by_id["wiz"] == "untested"  # new integrations start untested
+
+
+def test_home_assistant_found_key_has_no_slash(monkeypatch):
+    import asyncio
+    from noodle.plugins.homeassistant import PLUGIN
+    saved = {}
+    monkeypatch.setattr(config, "save", saved.update)
+    PLUGIN.found_urls["homeassistant.local:8123"] = "http://homeassistant.local:8123"
+    asyncio.run(PLUGIN.add_found(None, "homeassistant.local:8123"))
+    assert saved == {"ha_url": "http://homeassistant.local:8123"}
+    asyncio.run(PLUGIN.add_found(None, "192.168.1.5:8123"))  # not from this search: the address is built from the key
+    assert saved["ha_url"] == "http://192.168.1.5:8123"
+
+
+def test_hue_bridges_old_setting_is_still_read_and_more_can_be_added(monkeypatch):
+    monkeypatch.setattr(config, "HUE_HOST", "10.0.0.2")
+    monkeypatch.setattr(config, "HUE_KEY", "old-key")
+    monkeypatch.setattr(config, "HUE_BRIDGES", {})
+    assert config.hue_bridges() == {"10.0.0.2": "old-key"}  # the single-bridge setting works without moving anything
+    monkeypatch.setattr(config, "HUE_BRIDGES", {"10.0.0.3": "new-key"})
+    assert config.hue_bridges() == {"10.0.0.2": "old-key", "10.0.0.3": "new-key"}
+    assert config.hue_bridges() == config.hue_bridges()  # reading changes nothing, so running twice is safe
+
+
+def test_hue_adapter_keeps_one_light_per_bridge_and_forgets_a_removed_bridge(tmp_path):
+    from noodle.hub import Device, Hub
+    from noodle.plugins.hue.adapter import HueAdapter
+    from noodle.store import Store
+    hub = Hub(Store(tmp_path / "db.sqlite"))
+    adapter = HueAdapter(hub)
+    for host, dev in (("10.0.0.2", "hue:a"), ("10.0.0.3", "hue:b")):
+        hub.upsert(Device(id=dev, source="hue", name=dev))
+        adapter.devices_of[host] = {dev}
+        adapter.light_ids[dev] = (host, "light-" + dev)
+        adapter.state[host] = {"connected": True, "error": None}
+    assert adapter.connected is True
+    adapter.forget_bridge("10.0.0.3")
+    assert "hue:b" not in hub.devices and "hue:a" in hub.devices and "hue:b" not in adapter.light_ids
+    assert list(adapter.state) == ["10.0.0.2"]
+
+
+def test_integrations_say_whether_search_adds_devices_or_a_connection():
+    by_id = {p.id: p for p in plugins.discover()}
+    assert by_id["hue"].searchable and by_id["hue"].search_finds == "connection"  # a bridge
+    assert by_id["dirigera"].search_finds == "hub"
+    assert by_id["wled"].search_finds == "devices" and by_id["ble"].search_finds == "devices"
+
+
+# Contract tests: they run over every plugin, so a new integration is checked without editing a list.
+
+def test_every_panel_exists_in_the_frontend():
+    import re
+    from pathlib import Path
+    ts = Path(__file__).resolve().parents[2] / "frontend/src/lib/integrations/panels.ts"
+    known = set(re.findall(r"^\t(\w+):", ts.read_text(), re.M))
+    for plugin in plugins.discover():
+        assert plugin.panel is None or plugin.panel in known, f"{plugin.id}: panel {plugin.panel!r} is not in panels.ts"
+
+
+def test_every_searchable_plugin_implements_search():
+    for plugin in plugins.discover():
+        if plugin.searchable:
+            own = type(plugin).search is not plugins.base.Plugin.search
+            adapter = hasattr(plugin.adapter_class, "search")
+            assert own or adapter, f"{plugin.id} is searchable but has no search()"
+
+
+def test_describe_is_json_serialisable():
+    import json
+    for plugin in plugins.discover():
+        item = plugin.describe(None)
+        json.dumps({"id": item.id, "name": item.name, "help": item.help, "icon": item.icon, "panel": item.panel,
+                    "fields": [f.__dict__ for f in item.fields]}, default=str)
+
+
+def test_lan_plugin_config_attr_matches_adapter_attr():
+    from noodle.plugins.lan.plugin import LanPlugin
+    for plugin in plugins.discover():
+        if isinstance(plugin, LanPlugin):
+            assert plugin.config_attr == plugin.adapter_class.attr, plugin.id
+            assert hasattr(config, plugin.config_attr), plugin.id
+
+
+def test_details_keys_do_not_collide_with_core_keys():
+    from noodle import main
+    for plugin in plugins.discover():
+        adapter = main.hub.adapters.get(plugin.source) if plugin.source else None
+        item = plugin.describe(adapter)
+        core = set(integrations.describe(item)) - set(plugin.details(adapter))
+        extra = set(plugin.details(adapter))
+        assert not extra & {"id", "name", "help", "connected", "icon", "panel", "support", "search_finds",
+                            "can_add", "add_text", "added", "always", "fields"}, f"{plugin.id}: details() overrides a core key"
+        assert core  # the core keys are still there

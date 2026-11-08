@@ -8,6 +8,7 @@ import android.service.controls.DeviceTypes
 import android.service.controls.actions.BooleanAction
 import android.service.controls.actions.ControlAction
 import android.service.controls.actions.FloatAction
+import android.service.controls.actions.ModeAction
 import android.service.controls.templates.ControlButton
 import android.service.controls.templates.RangeTemplate
 import android.service.controls.templates.TemperatureControlTemplate
@@ -44,7 +45,9 @@ class NoodleControls : ControlsProviderService() {
 
     private fun id(device: Device, entity: Entity) = "${device.id}|${entity.key}"
 
-    private fun controllable(entity: Entity) = entity.kind in setOf("light", "switch", "number")
+    private fun controllable(entity: Entity) = entity.kind in setOf("light", "switch", "number", "climate")
+
+    private fun isTarget(entity: Entity) = entity.kind == "number" || entity.kind == "climate"
 
     private fun intent(): PendingIntent = PendingIntent.getActivity(
         this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
@@ -52,7 +55,7 @@ class NoodleControls : ControlsProviderService() {
 
     private fun type(entity: Entity) = when (entity.kind) {
         "light" -> DeviceTypes.TYPE_LIGHT
-        "number" -> DeviceTypes.TYPE_THERMOSTAT
+        "number", "climate" -> DeviceTypes.TYPE_THERMOSTAT
         else -> DeviceTypes.TYPE_SWITCH
     }
 
@@ -103,16 +106,22 @@ class NoodleControls : ControlsProviderService() {
         // Android tints "on" controls with the system accent (usually blue); lights should read as warm.
         if (entity.kind == "light") b.setCustomColor(android.content.res.ColorStateList.valueOf(0xFFFFB300.toInt()))
         when {
-            entity.kind == "number" -> {
+            isTarget(entity) -> {
+                // Use the range of the field (or thermostat) itself; 10-24 only when it has none.
+                val lo = entity.min ?: 10f
+                val hi = (entity.max ?: 24f).let { if (it > lo) it else lo + 1f }
+                val step = entity.step?.takeIf { it > 0f } ?: 0.5f
                 val value = (entity.number ?: 18.0).toFloat()
-                b.setStatusText(entity.text)
+                val off = entity.kind == "climate" && entity.mode == "off"
+                b.setStatusText(if (off) "Off" else entity.text)
                 b.setControlTemplate(
                     TemperatureControlTemplate(
                         controlId,
-                        RangeTemplate(controlId, 10f, 24f, value.coerceIn(10f, 24f), 0.5f, "%.1f"),
-                        TemperatureControlTemplate.MODE_HEAT,
-                        TemperatureControlTemplate.MODE_HEAT,
-                        TemperatureControlTemplate.FLAG_MODE_HEAT,
+                        RangeTemplate(controlId, lo, hi, value.coerceIn(lo, hi), step, "%.1f"),
+                        if (off) TemperatureControlTemplate.MODE_OFF else TemperatureControlTemplate.MODE_HEAT,
+                        if (off) TemperatureControlTemplate.MODE_OFF else TemperatureControlTemplate.MODE_HEAT,
+                        if (entity.kind == "climate") TemperatureControlTemplate.FLAG_MODE_HEAT or TemperatureControlTemplate.FLAG_MODE_OFF
+                        else TemperatureControlTemplate.FLAG_MODE_HEAT,
                     ),
                 )
             }
@@ -142,9 +151,13 @@ class NoodleControls : ControlsProviderService() {
                     is BooleanAction -> api.command(deviceId, key, on = action.newState)
                     is FloatAction -> {
                         val entity = live.devices.value[deviceId]?.entities?.firstOrNull { it.key == key }
-                        if (entity?.kind == "number") api.command(deviceId, key, value = action.newValue.toDouble())
+                        if (entity != null && isTarget(entity)) api.command(deviceId, key, value = action.newValue.toDouble())
                         else api.command(deviceId, key, on = true, brightness = action.newValue.toInt())
                     }
+                    is ModeAction -> api.command(
+                        deviceId, key,
+                        mode = if (action.newMode == TemperatureControlTemplate.MODE_OFF) "off" else "heat",
+                    )
                     else -> Unit
                 }
                 ControlAction.RESPONSE_OK

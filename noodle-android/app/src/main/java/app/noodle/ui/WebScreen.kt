@@ -22,10 +22,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import app.noodle.NoodleViewModel
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import org.json.JSONObject
 
-private class Bridge(private val onSettings: () -> Unit) {
+private class Bridge(private val onSettings: () -> Unit, private val onScan: () -> Unit) {
     @JavascriptInterface
     fun openSettings() { Handler(Looper.getMainLooper()).post(onSettings) }
+
+    /** The page asks for a QR scan (Matter pairing); the text comes back as a `noodle-qr` event on window. */
+    @JavascriptInterface
+    fun scanQr() { Handler(Looper.getMainLooper()).post(onScan) }
 }
 
 /** The Noodle web interface, so the app and the browser are the same thing. The login token is traded for a cookie. */
@@ -52,7 +60,15 @@ fun WebScreen(vm: NoodleViewModel, openSettings: () -> Unit) {
                 )
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
-                addJavascriptInterface(Bridge(openSettings), "NoodleApp")
+                val view = this
+                val scan: () -> Unit = {
+                    val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
+                    GmsBarcodeScanning.getClient(ctx, options).startScan().addOnSuccessListener { code ->
+                        val text = code.rawValue ?: ""
+                        view.evaluateJavascript("window.dispatchEvent(new CustomEvent('noodle-qr', {detail: ${JSONObject.quote(text)}}))", null)
+                    }
+                }
+                addJavascriptInterface(Bridge(openSettings, scan), "NoodleApp")
                 webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                         val u = request.url
