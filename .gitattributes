@@ -1,3 +1,5 @@
 * text=auto eol=lf
 *.sh text eol=lf
 *.apk binary
+*.bat text eol=crlf
+*.sh text eol=lf
