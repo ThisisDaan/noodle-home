@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import Logo from './Logo.svelte';
+	import SetupFrame from './SetupFrame.svelte';
 	import { api } from './api.ts';
 	import Discover from './integrations/Discover.svelte';
 	import IntegrationForm from './integrations/IntegrationForm.svelte';
@@ -81,9 +82,9 @@
 	const short = (text: string) => text.split('. ')[0].replace(/\.$/, '') + '.';
 </script>
 
-<div class="bg-base-200 fixed inset-0 z-50 overflow-y-auto">
-	<div class="mx-auto flex min-h-full max-w-xl flex-col gap-4 p-4 pb-10 sm:justify-center">
-		<div class="flex items-center gap-3">
+<div class="bg-base-200 fixed inset-0 z-50">
+	<div class="mx-auto flex h-full max-w-xl flex-col gap-4 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:justify-center">
+		<div class="flex shrink-0 items-center gap-3">
 			<Logo class="size-10" />
 			<ol class="flex grow items-center gap-1.5" aria-label="Progress">
 				{#each STEPS as s, i (s.id)}
@@ -93,8 +94,9 @@
 			<button class="btn btn-ghost btn-sm" onclick={() => finish().catch((e) => (error = String(e)))}>Skip setup</button>
 		</div>
 
-		<div class="card bg-base-100 border-base-content/10 border shadow-xl">
-			<div class="card-body gap-4">
+		<div class="card bg-base-100 border-base-content/10 min-h-0 border shadow-xl">
+			<SetupFrame class="card-body gap-4">
+				<div class="flex flex-col gap-4">
 				{#if !loaded}
 					<div class="flex justify-center py-10"><span class="loading loading-dots loading-lg text-primary"></span></div>
 
@@ -159,17 +161,19 @@
 					{/each}
 					<p class="text-sm opacity-70">Matter devices are added under Integrations › Matter with their setup code. Everything shows up under Devices.</p>
 				{/if}
-
-				{#if error}<div role="alert" class="alert alert-error alert-soft text-sm">{error}</div>{/if}
-
-				<div class="flex items-center justify-between gap-2 pt-2">
-					<button class="btn btn-ghost" disabled={index === 0 || busy} onclick={() => index--}>Back</button>
-					<button class="btn btn-primary" disabled={busy || !loaded} onclick={next}>
-						{#if busy}<span class="loading loading-spinner loading-sm"></span>{/if}
-						{index === STEPS.length - 1 ? 'Finish' : 'Next'}
-					</button>
 				</div>
-			</div>
+
+				{#snippet footer()}
+					{#if error}<div role="alert" class="alert alert-error alert-soft mb-3 text-sm">{error}</div>{/if}
+					<div class="flex items-center justify-between gap-2">
+						<button class="btn btn-ghost" disabled={index === 0 || busy} onclick={() => index--}>Back</button>
+						<button class="btn btn-primary" disabled={busy || !loaded} onclick={next}>
+							{#if busy}<span class="loading loading-spinner loading-sm"></span>{/if}
+							{index === STEPS.length - 1 ? 'Finish' : 'Next'}
+						</button>
+					</div>
+				{/snippet}
+			</SetupFrame>
 		</div>
 	</div>
 </div>
