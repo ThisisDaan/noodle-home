@@ -20,6 +20,7 @@ from . import hotspot
 log = logging.getLogger(__name__)
 
 JOIN_SECONDS = 120  # how long a newly set up Shelly gets to show up on the home network
+STAGES = 5  # the steps of setting up a new Shelly, for the progress bar
 SCAN_EVERY = 6.0  # seconds between looks at the nearby Wi-Fi networks during a search
 
 
@@ -133,7 +134,7 @@ class ShellyAdapter(LanAdapter):
                 found(key, name=hotspot.ap_name(n.ssid), detail="New: not on your Wi-Fi yet", wifi=wifi)
 
     async def add_found(self, key: str, wifi_ssid: str | None = None, wifi_password: str = "",
-                        report: Callable[[str], None] = lambda text: None) -> None:
+                        report: Callable[..., None] = lambda text, **info: None) -> None:
         if not key.startswith("ap:"):
             return await super().add_found(key)
         spot = self.hotspots.get(key)
@@ -155,25 +156,27 @@ class ShellyAdapter(LanAdapter):
                 back = await self.wifi.active(device)
             except hotspot.WifiError:
                 back = None
-            report("Joining the Shelly's own Wi-Fi…")
+            step = lambda n, text: report(text, stage=n, stages=STAGES)  # noqa: E731
+            step(1, "Joining the Shelly's own Wi-Fi…")
             try:
                 await self.wifi.join(device, spot["ssid"])
-                report("Giving it your Wi-Fi details…")
+                step(2, "Giving it your Wi-Fi details…")
                 mac = await hotspot.configure(self.http, ssid, password)
             except hotspot.WifiError as err:
                 raise ValueError(str(err)) from err
             finally:
-                report("Going back to your network…")
+                step(3, "Going back to your network…")
                 await self.wifi.leave(back)
-            report(f"Waiting for it to join {ssid}…")
+            step(4, f"Waiting for it to join {ssid} (this can take a minute)…")
             host = await self.wait_for(mac, JOIN_SECONDS)
             if host is None:
                 raise ValueError(f"The Shelly did not show up on {ssid}. Check the password and that {ssid} is a "
                                  "2.4 GHz network, then reset the Shelly (hold its button for about 10 seconds) "
                                  "and search again.")
-            report("Adding it…")
+            step(5, "Adding it…")
             await self.add_host(host)
             self.hotspots.pop(key, None)
+            report(None, stage=None, detail=f"On {ssid} at {host}")
 
     async def wait_for(self, mac: str, seconds: float) -> str | None:
         """The address of the Shelly with this key once it announces itself on the network, or None."""

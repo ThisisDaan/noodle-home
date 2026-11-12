@@ -150,7 +150,7 @@ def test_gen1_setup_sends_the_wifi_as_a_form_and_adds_it(monkeypatch):
         adapter.wifi = hotspot.NmcliWifi(nmcli)
         adapter.hotspots["ap:shelly1-A4CF12B3C4D5"] = {"ssid": "shelly1-A4CF12B3C4D5", "device": "wlan0"}
         await adapter.add_found("ap:shelly1-A4CF12B3C4D5", wifi_ssid="Home:Net", wifi_password="s3cret pass",
-                                report=steps.append)
+                                report=lambda text, **info: steps.append((text, info)))
         return hub, adapter
 
     hub, adapter = asyncio.run(go())
@@ -162,7 +162,9 @@ def test_gen1_setup_sends_the_wifi_as_a_form_and_adds_it(monkeypatch):
     joined = next(c for c in nmcli.calls if "connect" in c)
     assert joined[joined.index("connect") + 1] == "shelly1-A4CF12B3C4D5" and hotspot.CONNECTION in joined
     assert ["--wait", "40", "connection", "up", "uuid", "1111-home"] in nmcli.calls  # back to the home network
-    assert steps[0].startswith("Joining") and steps[-1] == "Adding it…"
+    assert steps[0] == ("Joining the Shelly's own Wi-Fi…", {"stage": 1, "stages": shelly.STAGES})
+    assert [info["stage"] for _, info in steps[:-1]] == [1, 2, 3, 4, 5]
+    assert steps[-1] == (None, {"stage": None, "detail": "On Home:Net at 192.168.1.77"})  # where it ended up
 
 
 def test_gen2_setup_uses_wifi_setconfig():
@@ -345,3 +347,53 @@ def test_an_unexpected_error_leaves_a_note_and_the_search_goes_on(monkeypatch):
 
     state = asyncio.run(go())
     assert state["error"] is None and len(state["notes"]) == 1
+
+
+# --- what the page sees: progress, result and error on the found row itself
+
+@pytest.fixture
+def api(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from noodle import main
+    monkeypatch.setattr(config, "CONFIG_DIR", tmp_path / "config")
+    monkeypatch.setattr(main.integrations, "added_ids", lambda: ["shelly"])
+    main.store.db.execute("DELETE FROM settings WHERE key IN ('password', 'setup_started')")
+    client = TestClient(main.app)
+    assert client.post("/api/auth/setup", json={"password": "correct horse"}).status_code == 200
+    main.discovery._found["shelly"] = {"ap:shelly1-A4CF12": {"key": "ap:shelly1-A4CF12", "name": "Shelly 1",
+                                                              "added": False, "wifi": {"networks": ["Home"]}}}
+    yield client, main
+    main.discovery._found.pop("shelly", None)
+    main.store.db.execute("DELETE FROM settings WHERE key IN ('password', 'setup_started')")
+
+
+def test_a_failed_setup_says_why_on_the_row(api, monkeypatch):
+    client, main = api
+    adapter = main.ADAPTERS["shelly"]
+
+    async def fails(key, wifi_ssid=None, wifi_password="", report=None):
+        report("Joining the Shelly's own Wi-Fi…", stage=1, stages=5)
+        raise ValueError("The Shelly did not show up on Home. Check the password")
+
+    monkeypatch.setattr(adapter, "add_found", fails)
+    res = client.post("/api/integrations/shelly/found/ap:shelly1-A4CF12/add", json={"wifi_ssid": "Home", "wifi_password": "x"})
+    assert res.status_code == 400
+    row = main.discovery.state("shelly")["found"][0]
+    assert row["failed"].startswith("The Shelly did not show up") and row["step"] is None and not row["added"]
+
+
+def test_a_working_setup_marks_the_row_added_with_where_it_is(api, monkeypatch):
+    client, main = api
+    adapter = main.ADAPTERS["shelly"]
+
+    async def works(key, wifi_ssid=None, wifi_password="", report=None):
+        report("Adding it…", stage=5, stages=5)
+        report(None, stage=None, detail="On Home at 192.168.1.77")
+
+    monkeypatch.setattr(adapter, "add_found", works)
+    main.discovery.update("shelly", "ap:shelly1-A4CF12", failed="an earlier try")
+    res = client.post("/api/integrations/shelly/found/ap:shelly1-A4CF12/add", json={"wifi_ssid": "Home", "wifi_password": "x"})
+    assert res.status_code == 200
+    row = main.discovery.state("shelly")["found"][0]
+    assert row["added"] and row["detail"] == "On Home at 192.168.1.77" and row["failed"] is None and row["step"] is None

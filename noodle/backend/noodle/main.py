@@ -1013,19 +1013,26 @@ async def add_found(integration_id: str, key: str, body: FoundBody | None = None
     plugin, adapter = _searchable(integration_id)
     extra: dict = {}
     if body and body.wifi_ssid:
+        # The steps go to the found row itself (step, stage of STAGES), and so does the outcome: `failed`, or a new
+        # `detail` once it worked. They are pushed over /api/ws, so they also reach a page that lost its request.
         extra = {"wifi_ssid": body.wifi_ssid, "wifi_password": body.wifi_password,
-                 "report": lambda text: discovery.update(integration_id, key, step=text)}
+                 "report": lambda text, **info: discovery.update(integration_id, key, step=text, **info)}
+        discovery.update(integration_id, key, failed=None, step=None, stage=None)
     try:
         await plugin.add_found(adapter, key, **extra)
     except PressButton as err:
         raise HTTPException(409, str(err) or plugin.press_hint)  # not an error: the page asks again
     except (KeyError, ValueError) as err:
-        raise HTTPException(400, str(err.args[0]) if err.args else "Could not add that")
-    except Exception as err:
-        raise HTTPException(400, f"Could not add that: {err}")
-    finally:
+        message = str(err.args[0]) if err.args else "Could not add that"
         if extra:
-            discovery.update(integration_id, key, step=None)
+            discovery.update(integration_id, key, step=None, stage=None, failed=message)
+        raise HTTPException(400, message)
+    except Exception as err:
+        if extra:
+            discovery.update(integration_id, key, step=None, stage=None, failed=f"Could not add that: {err}")
+        raise HTTPException(400, f"Could not add that: {err}")
+    if extra:
+        discovery.update(integration_id, key, step=None, stage=None)
     if plugin.restart_after_add and plugin.source:
         await restart_adapter(plugin.source)
         await asyncio.sleep(2.5)  # give it a moment to connect, so the answer shows the result

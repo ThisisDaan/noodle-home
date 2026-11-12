@@ -13,8 +13,12 @@ export type Found = {
 	 * whether this hub goes offline for a moment while it sets it up (it is on that Wi-Fi itself). `only5`: heard on
 	 * 5 GHz only, which a Shelly cannot join (unless the router has 2.4 GHz under the same name). */
 	wifi?: { networks: string[]; current: string | null; offline: boolean; only5?: string[] };
-	/** What is happening while it is being added. */
+	/** What is happening while it is being added: the step, and how far along (stage of stages). */
 	step?: string | null;
+	stage?: number | null;
+	stages?: number;
+	/** Why adding it did not work (shown on the row itself). */
+	failed?: string | null;
 };
 /** A search for new devices: it runs only when the user starts it, and the server pushes what it finds. */
 export type SearchState = {

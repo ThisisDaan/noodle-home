@@ -19,8 +19,9 @@
 	const searching = $derived(!!search?.searching);
 	const found = $derived(search?.found ?? []);
 	// Things that are not on the network yet (they first have to join the Wi-Fi) come first, as their own group.
-	const fresh = $derived(found.filter((f) => f.wifi && !f.added));
-	const onNetwork = $derived(found.filter((f) => !(f.wifi && !f.added)));
+	// They stay in that group once set up, so the row does not jump away when it is done.
+	const fresh = $derived(found.filter((f) => f.wifi));
+	const onNetwork = $derived(found.filter((f) => !f.wifi));
 
 	// A clock for the countdown, running only while a search does.
 	let now = $state(Date.now());
@@ -35,10 +36,12 @@
 
 	let busy = $state<string | null>(null);
 	let error = $state('');
+	let errorFor = $state<string | null>(null); // the found row the error belongs to, shown there
 
 	async function run(work: () => Promise<unknown>, what: string) {
 		busy = what;
 		error = '';
+		errorFor = null;
 		try {
 			await work();
 		} catch (err) {
@@ -77,13 +80,18 @@
 
 	async function connect(key: string) {
 		await add(key, { wifi_ssid: wifiSsid, wifi_password: wifiPassword });
-		if (!error) wifiFor = null;
+		if (!error) wifiFor = null; // on failure the form stays open, to try again
 	}
+	// Why a row could not be added: what the server put on the row (it also reaches a page that lost its request),
+	// or what the request itself answered.
+	const failure = (f: Found) => (busy === f.key ? null : f.failed || (errorFor === f.key && error) || null);
+	const working = (f: Found) => !!f.stage || (busy === f.key && !!f.wifi);
 
 	async function add(key: string, body: Record<string, string> = {}) {
 		const mine = ++attempt;
 		const end = Date.now() + PRESS_SECONDS * 1000;
 		error = '';
+		errorFor = key;
 		busy = key;
 		try {
 			while (mine === attempt) {
@@ -177,8 +185,12 @@
 	{:else if found.length}
 		{#if fresh.length}
 			<section class="flex flex-col gap-1" aria-live="polite">
-				<h3 class="text-warning flex items-center gap-1.5 text-xs font-semibold tracking-wide uppercase"><Icon name="wifi" class="size-4" />New: not on your Wi-Fi yet</h3>
-				<p class="text-xs opacity-70">Not paired yet. Set one up to put it on your Wi-Fi and add it.</p>
+				{#if fresh.some((f) => !f.added)}
+					<h3 class="text-warning flex items-center gap-1.5 text-xs font-semibold tracking-wide uppercase"><Icon name="wifi" class="size-4" />New: not on your Wi-Fi yet</h3>
+					<p class="text-xs opacity-70">Not paired yet. Set one up to put it on your Wi-Fi and add it.</p>
+				{:else}
+					<h3 class="text-success flex items-center gap-1.5 text-xs font-semibold tracking-wide uppercase"><Icon name="wifi" class="size-4" />Set up on your Wi-Fi</h3>
+				{/if}
 				<ul class="flex flex-col gap-1">
 					{#each fresh as f (f.key)}{@render row(f, true)}{/each}
 				</ul>
@@ -197,29 +209,56 @@
 		<p class="bg-base-200 rounded-box p-3 text-sm opacity-80">{note}</p>
 	{/each}
 	{#if search?.error}<div role="alert" class="alert alert-error alert-soft text-sm">Search failed: {search.error}</div>{/if}
-	{#if error}<div role="alert" class="alert alert-error alert-soft text-sm">{error}</div>{/if}
+	{#if error && !errorFor}<div role="alert" class="alert alert-error alert-soft text-sm">{error}</div>{/if}
 </div>
 
 <!-- One thing the search found. `fresh`: it still has to join the Wi-Fi (a new Shelly), shown apart and in another colour. -->
 {#snippet row(f: Found, fresh: boolean)}
-			<li class="rounded-box flex flex-col gap-3 p-3 {fresh ? 'bg-warning/10 border-warning/50 border' : 'bg-base-200'}" in:fly={{ y: 10, duration: 250 }}>
+			{@const failed = failure(f)}
+			{@const busyHere = working(f)}
+			<li class="rounded-box flex flex-col gap-3 p-3 {!fresh ? 'bg-base-200' : f.added ? 'bg-success/10 border-success/50 border' : failed ? 'bg-error/10 border-error/50 border' : busyHere ? 'bg-primary/10 border-primary/50 border' : 'bg-warning/10 border-warning/50 border'}" in:fly={{ y: 10, duration: 250 }}>
 				<div class="flex items-center gap-3">
 					<span class="min-w-0 grow">
 						<span class="flex items-center gap-2"><span class="truncate font-medium">{f.name}</span>
-							{#if fresh}<span class="badge badge-warning badge-sm shrink-0">Not connected</span>{/if}</span>
-						{#if busy === f.key && f.step}
-							<span class="text-primary flex items-center gap-1 text-xs"><span class="loading loading-spinner loading-xs"></span>{f.step}</span>
-						{:else if f.detail}<span class="block truncate text-xs opacity-60">{f.detail}</span>{/if}
+							{#if fresh}
+								{#if f.added}<span class="badge badge-success badge-sm shrink-0">Connected</span>
+								{:else if busyHere}<span class="badge badge-primary badge-sm shrink-0">Setting up</span>
+								{:else if failed}<span class="badge badge-error badge-sm shrink-0">Not set up</span>
+								{:else}<span class="badge badge-warning badge-sm shrink-0">Not connected</span>{/if}
+							{/if}</span>
+						{#if f.detail && !busyHere}<span class="block truncate text-xs opacity-60">{f.detail}</span>{/if}
 					</span>
 					{#if f.added}
 						<span class="text-success flex items-center gap-1 text-sm"><Icon name="check" class="size-4" />Added</span>
 					{:else if f.wifi}
-						<button type="button" class="btn btn-primary btn-sm" disabled={busy !== null} onclick={() => openWifi(f)}>Set up</button>
+						{#if !busyHere && wifiFor !== f.key}
+							<button type="button" class="btn btn-primary btn-sm" disabled={busy !== null} onclick={() => openWifi(f)}>{failed ? 'Try again' : 'Set up'}</button>
+						{/if}
 					{:else}
 						<button type="button" class="btn btn-primary btn-sm" disabled={busy !== null} onclick={() => add(f.key)}>Add</button>
 					{/if}
 				</div>
-				{#if f.wifi && !f.added && wifiFor === f.key}
+				{#if fresh && busyHere}
+					<div class="bg-base-100 rounded-box flex flex-col gap-2 p-3" role="status" aria-live="polite">
+						<p class="flex items-center gap-2 font-medium"><span class="loading loading-spinner loading-sm text-primary"></span>{f.step ?? 'Starting…'}</p>
+						<progress class="progress progress-primary w-full" value={f.stage ?? 0} max={f.stages ?? 5}></progress>
+						<p class="text-xs opacity-60">Step {f.stage ?? 0} of {f.stages ?? 5}. This takes up to two minutes; it carries on if you close this.</p>
+					</div>
+				{:else if fresh && f.added}
+					<div class="bg-base-100 rounded-box flex items-start gap-3 p-3" role="status">
+						<Icon name="check" class="text-success mt-0.5 size-5 shrink-0" />
+						<div class="min-w-0">
+							<p class="font-medium">Done: {f.name} is on your Wi-Fi and added to your devices.</p>
+							<p class="text-sm opacity-70">{f.detail ?? ''} <a class="link" href="/devices">See it under Devices</a></p>
+						</div>
+					</div>
+				{:else if failed}
+					<div role="alert" class="alert alert-error alert-soft items-start text-sm">
+						<Icon name="close" class="mt-0.5 size-4 shrink-0" />
+						<span><b>That did not work.</b> {failed}</span>
+					</div>
+				{/if}
+				{#if f.wifi && !f.added && !busyHere && wifiFor === f.key}
 					<form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); if (wifiSsid) connect(f.key); }}>
 						<p class="text-sm">Noodle puts this Shelly on your Wi-Fi. Pick the network it should join.</p>
 						{#if f.wifi.networks.length}

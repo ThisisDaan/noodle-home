@@ -138,8 +138,9 @@ class Plugin:
         pressed; raise KeyError or ValueError with a message the user can read if it cannot be added. Things that
         join by themselves (Zigbee) are reported as found(..., added=True) and need no add_found.
         A found thing reported with `wifi={"networks": [...], "current": ..., "offline": bool}` first asks the user
-        for a Wi-Fi network and password; they arrive in `extra` as wifi_ssid and wifi_password, with `report(text)`
-        to show what is happening. By default the adapter's own `add_found`."""
+        for a Wi-Fi network and password; they arrive in `extra` as wifi_ssid and wifi_password, with
+        `report(text, stage=n, stages=total)` to show what is happening (on the found row, with a progress bar), and
+        `report(None, detail=...)` at the end to say where it ended up. By default the adapter's own `add_found`."""
         if not hasattr(adapter, "add_found"):
             raise NotImplementedError
         await adapter.add_found(key)
