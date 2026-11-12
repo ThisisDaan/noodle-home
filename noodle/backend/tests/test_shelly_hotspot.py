@@ -309,3 +309,39 @@ def test_netsh_joins_the_shelly_with_a_temporary_open_profile_and_goes_back():
 def test_profile_xml_escapes_the_name():
     xml = hotspot._profile_xml("a<b&c")
     assert "a&lt;b&amp;c" in xml and "<authentication>open</authentication>" in xml
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the hub's Windows event loop")
+def test_netsh_runs_under_the_selector_loop_the_hub_uses_on_windows():
+    loop = asyncio.SelectorEventLoop()  # what __main__ sets on Windows; it cannot start asyncio subprocesses
+    try:
+        out = loop.run_until_complete(hotspot.run_netsh(["wlan", "show", "drivers"]))
+    except hotspot.WifiError:
+        out = "ran"  # no Wi-Fi on this machine: netsh still ran and answered
+    finally:
+        loop.close()
+    assert out
+
+
+def test_an_unexpected_error_leaves_a_note_and_the_search_goes_on(monkeypatch):
+    async def no_mdns(types, seconds, on_service, until=None):
+        pass
+
+    monkeypatch.setattr(mdns, "browse", no_mdns)
+
+    class Broken:
+        async def device(self):
+            raise NotImplementedError
+
+    async def go():
+        discovery = Discovery(type("H", (), {"broadcast": lambda self, msg: None})())
+        adapter = shelly.ShellyAdapter(FakeHub())
+        adapter.http = httpx.AsyncClient()
+        adapter.wifi = Broken()
+        discovery.start("shelly", adapter.search, seconds=0.2)
+        await asyncio.sleep(0.5)
+        await adapter.http.aclose()
+        return discovery.state("shelly")
+
+    state = asyncio.run(go())
+    assert state["error"] is None and len(state["notes"]) == 1

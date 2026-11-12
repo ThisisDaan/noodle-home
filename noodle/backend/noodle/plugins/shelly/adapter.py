@@ -8,6 +8,7 @@ Search also finds new Shellies that are not on the Wi-Fi yet and puts them on it
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 import time
 from typing import Callable
@@ -15,6 +16,8 @@ from typing import Callable
 from ...hub import Device, Entity
 from ..lan.adapter import LanAdapter
 from . import hotspot
+
+log = logging.getLogger(__name__)
 
 JOIN_SECONDS = 120  # how long a newly set up Shelly gets to show up on the home network
 SCAN_EVERY = 6.0  # seconds between looks at the nearby Wi-Fi networks during a search
@@ -99,7 +102,10 @@ class ShellyAdapter(LanAdapter):
                 device = await self.wifi.device()
                 networks = await self.wifi.scan(device, fresh)
                 wired = await self.wifi.wired() if fresh else wired
-            except hotspot.WifiError as err:
+            except Exception as err:  # never let this part spoil the search for Shellies already on the network
+                if not isinstance(err, hotspot.WifiError):
+                    log.warning("shelly: looking for new Shellies failed: %r", err)
+                    err = "something went wrong while looking at the Wi-Fi networks"
                 note(f"New Shellies that are not on your Wi-Fi yet cannot be set up from here: {err}. To do it by "
                      f"hand, join the Shelly's own Wi-Fi (shelly…), open http://{hotspot.SETUP_ADDRESS} and enter "
                      "your Wi-Fi there, then search again.")

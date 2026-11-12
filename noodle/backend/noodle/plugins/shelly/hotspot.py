@@ -17,6 +17,7 @@ import os
 import re
 import shutil
 import socket
+import subprocess
 import sys
 import tempfile
 import time
@@ -135,17 +136,27 @@ def explain(text: str) -> str:
 Run = Callable[[list[str]], Awaitable[str]]
 
 
+async def _call(program: str, args: list[str], timeout: float) -> tuple[int, bytes, bytes]:
+    """Run a program in a thread. Not asyncio's subprocesses: on Windows the hub runs a selector event loop (for
+    MQTT), which cannot start them (NotImplementedError)."""
+    def call() -> tuple[int, bytes, bytes]:
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # no console window flashing up on Windows
+        done = subprocess.run([program, *args], capture_output=True, timeout=timeout, creationflags=flags)
+        return done.returncode, done.stdout, done.stderr
+
+    try:
+        return await asyncio.to_thread(call)
+    except subprocess.TimeoutExpired:
+        raise WifiError("The Wi-Fi did not answer in time")
+    except OSError as err:
+        raise WifiError(f"could not run {program} ({err.__class__.__name__})") from err
+
+
 async def run_nmcli(args: list[str]) -> str:
     if shutil.which("nmcli") is None:
         raise WifiError(NO_NMCLI)
-    proc = await asyncio.create_subprocess_exec("nmcli", *args, stdout=asyncio.subprocess.PIPE,
-                                                stderr=asyncio.subprocess.PIPE)
-    try:
-        out, err = await asyncio.wait_for(proc.communicate(), 60)
-    except asyncio.TimeoutError:
-        proc.kill()
-        raise WifiError("The Wi-Fi did not answer in time")
-    if proc.returncode:
+    code, out, err = await _call("nmcli", args, 60)
+    if code:
         raise WifiError(explain(err.decode(errors="replace") or out.decode(errors="replace")))
     return out.decode(errors="replace")
 
@@ -264,15 +275,9 @@ def _decode(data: bytes) -> str:
 
 
 async def run_netsh(args: list[str]) -> str:
-    proc = await asyncio.create_subprocess_exec("netsh", *args, stdout=asyncio.subprocess.PIPE,
-                                                stderr=asyncio.subprocess.PIPE)
-    try:
-        out, err = await asyncio.wait_for(proc.communicate(), 30)
-    except asyncio.TimeoutError:
-        proc.kill()
-        raise WifiError("The Wi-Fi did not answer in time")
+    code, out, err = await _call("netsh", args, 30)
     text = _decode(out) + _decode(err)
-    if proc.returncode:
+    if code:
         raise WifiError(explain(text))
     return text
 
