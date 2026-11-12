@@ -238,12 +238,12 @@
 							<p class="text-xs opacity-60">A hidden network does not show up in the list: type its name exactly, capitals included.</p>
 						{/if}
 						<label class="floating-label"><span>Wi-Fi password</span>
-							<span class="join w-full">
+							<div class="join w-full">
 								<input class="input join-item w-full" type={showPassword ? 'text' : 'password'} autocomplete="off" placeholder="Wi-Fi password"
 									bind:value={wifiPassword} disabled={busy !== null} />
 								<button type="button" class="btn join-item" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => (showPassword = !showPassword)}>
 									<Icon name="eye" class="size-4 {showPassword ? '' : 'opacity-50'}" /></button>
-							</span></label>
+							</div></label>
 						<p class="text-xs opacity-60">Shellies only join 2.4 GHz networks. The password goes to the Shelly and is not saved.</p>
 						{#if only5(f, wifiSsid)}
 							<p class="bg-warning/15 rounded-box p-2 text-xs">This hub only hears {wifiSsid} on 5 GHz, which a Shelly cannot join. Pick it anyway if your router also has 2.4 GHz under this name.</p>

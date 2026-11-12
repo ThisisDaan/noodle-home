@@ -42,10 +42,10 @@
 {#if adding}
 <form class="flex flex-col gap-1" onsubmit={(e) => { e.preventDefault(); if (host.trim()) add(); }}>
 	<label class="floating-label"><span>Add by IP address</span>
-		<span class="join w-full">
+		<div class="join w-full">
 			<input class="input join-item w-full" placeholder="192.168.1.40" bind:value={host} disabled={busy} />
 			<button class="btn btn-primary join-item" disabled={busy || !host.trim()}>Add</button>
-		</span></label>
+		</div></label>
 	{#if item.add_hint}<p class="text-xs opacity-60">{item.add_hint}</p>{/if}
 </form>
 {/if}

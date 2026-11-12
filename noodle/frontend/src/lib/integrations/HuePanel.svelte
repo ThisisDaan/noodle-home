@@ -78,10 +78,10 @@
 {#if adding}
 <form class="flex flex-col gap-1" onsubmit={(e) => { e.preventDefault(); if (host.trim() && !busy) add(); }}>
 	<label class="floating-label"><span>Add a bridge by IP address</span>
-		<span class="join w-full">
+		<div class="join w-full">
 			<input class="input join-item w-full" placeholder="192.168.1.20" bind:value={host} disabled={busy} />
 			<button class="btn btn-primary join-item" disabled={busy || !host.trim()}>Add</button>
-		</span></label>
+		</div></label>
 </form>
 {/if}
 {#if waiting}
