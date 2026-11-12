@@ -4,7 +4,17 @@ export type LanDevice = { key: string; name: string; address: string; available:
 export type Bulb = { mac: string; name: string; address: string; available: boolean };
 
 /** One thing a search found (backend discovery.py). */
-export type Found = { key: string; name: string; detail?: string; added: boolean };
+export type Found = {
+	key: string;
+	name: string;
+	detail?: string;
+	added: boolean;
+	/** It has to join a Wi-Fi network first (a new Shelly): the networks it can join, the one this hub is on, and
+	 * whether this hub goes offline for a moment while it sets it up (it is on that Wi-Fi itself). */
+	wifi?: { networks: string[]; current: string | null; offline: boolean };
+	/** What is happening while it is being added. */
+	step?: string | null;
+};
 /** A search for new devices: it runs only when the user starts it, and the server pushes what it finds. */
 export type SearchState = {
 	searching: boolean;
@@ -13,6 +23,8 @@ export type SearchState = {
 	total: number;
 	found: Found[];
 	error: string | null;
+	/** What the search could not look for, and why. */
+	notes?: string[];
 };
 
 /** One entry of the Integrations page, as the server describes it (see backend integrations.py). */

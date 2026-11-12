@@ -3,11 +3,12 @@
 	import Icon from '../Icon.svelte';
 	import { api, ApiError } from '../api.ts';
 	import { live } from '../live.svelte.ts';
-	import type { Integration, SearchState } from './types.ts';
+	import type { Found, Integration, SearchState } from './types.ts';
 
 	/** The one screen for adding devices, the same for every integration that can search (IntegrationForm shows it).
 	 * Nothing searches until the button is pressed, then for half a minute; the server pushes what it finds (nothing
-	 * is polled). Things that need a button pressed (Philips Hue) get the same "press the button" step. */
+	 * is polled). Things that need a button pressed (Philips Hue) get the same "press the button" step, and things that
+	 * first have to join the Wi-Fi (a new Shelly) ask for the network and its password, which are never stored. */
 	let { item, onchange }: { item: Integration; onchange: (updated: Integration) => void } = $props();
 	const id = $derived(item.id);
 	const noun = $derived(item.noun ?? 'devices');
@@ -53,7 +54,21 @@
 	let attempt = 0; // bumped to cancel a wait that is still running
 	$effect(() => () => void attempt++);
 
-	async function add(key: string) {
+	// The Wi-Fi for things that have to join it first. Kept while this screen is open, so a second one is quick.
+	let wifiFor = $state<string | null>(null);
+	let wifiSsid = $state('');
+	let wifiPassword = $state('');
+	let showPassword = $state(false);
+	function openWifi(f: Found) {
+		wifiFor = wifiFor === f.key ? null : f.key;
+		if (!wifiSsid || !f.wifi?.networks.includes(wifiSsid)) wifiSsid = f.wifi?.current ?? f.wifi?.networks[0] ?? '';
+	}
+	async function connect(key: string) {
+		await add(key, { wifi_ssid: wifiSsid, wifi_password: wifiPassword });
+		if (!error) wifiFor = null;
+	}
+
+	async function add(key: string, body: Record<string, string> = {}) {
 		const mine = ++attempt;
 		const end = Date.now() + PRESS_SECONDS * 1000;
 		error = '';
@@ -61,7 +76,7 @@
 		try {
 			while (mine === attempt) {
 				try {
-					onchange(await api<Integration>(url(key), { body: {} }));
+					onchange(await api<Integration>(url(key), { body }));
 					press = null;
 					return;
 				} catch (err) {
@@ -150,20 +165,58 @@
 	{:else if found.length}
 		<ul class="flex flex-col gap-1" aria-live="polite">
 			{#each found as f (f.key)}
-				<li class="bg-base-200 rounded-box flex items-center gap-3 p-3" in:fly={{ y: 10, duration: 250 }}>
-					<span class="min-w-0 grow">
-						<span class="block truncate font-medium">{f.name}</span>
-						{#if f.detail}<span class="block truncate text-xs opacity-60">{f.detail}</span>{/if}
-					</span>
-					{#if f.added}
-						<span class="text-success flex items-center gap-1 text-sm"><Icon name="check" class="size-4" />Added</span>
-					{:else}
-						<button type="button" class="btn btn-primary btn-sm" disabled={busy !== null} onclick={() => add(f.key)}>Add</button>
+				<li class="bg-base-200 rounded-box flex flex-col gap-3 p-3" in:fly={{ y: 10, duration: 250 }}>
+					<div class="flex items-center gap-3">
+						<span class="min-w-0 grow">
+							<span class="block truncate font-medium">{f.name}</span>
+							{#if busy === f.key && f.step}
+								<span class="text-primary flex items-center gap-1 text-xs"><span class="loading loading-spinner loading-xs"></span>{f.step}</span>
+							{:else if f.detail}<span class="block truncate text-xs opacity-60">{f.detail}</span>{/if}
+						</span>
+						{#if f.added}
+							<span class="text-success flex items-center gap-1 text-sm"><Icon name="check" class="size-4" />Added</span>
+						{:else if f.wifi}
+							<button type="button" class="btn btn-primary btn-sm" disabled={busy !== null} onclick={() => openWifi(f)}>Set up</button>
+						{:else}
+							<button type="button" class="btn btn-primary btn-sm" disabled={busy !== null} onclick={() => add(f.key)}>Add</button>
+						{/if}
+					</div>
+					{#if f.wifi && !f.added && wifiFor === f.key}
+						<form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); if (wifiSsid) connect(f.key); }}>
+							<p class="text-sm">Noodle puts this Shelly on your Wi-Fi. Pick the network it should join.</p>
+							{#if f.wifi.networks.length}
+								<label class="floating-label"><span>Wi-Fi network</span>
+									<select class="select w-full" bind:value={wifiSsid} disabled={busy !== null}>
+										{#each f.wifi.networks as name (name)}<option value={name}>{name}{name === f.wifi.current ? ' (this hub)' : ''}</option>{/each}
+									</select></label>
+								<label class="floating-label"><span>Wi-Fi password</span>
+									<span class="join w-full">
+										<input class="input join-item w-full" type={showPassword ? 'text' : 'password'} autocomplete="off" placeholder="Wi-Fi password"
+											bind:value={wifiPassword} disabled={busy !== null} />
+										<button type="button" class="btn join-item" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => (showPassword = !showPassword)}>
+											<Icon name="eye" class="size-4 {showPassword ? '' : 'opacity-50'}" /></button>
+									</span></label>
+								<p class="text-xs opacity-60">Shellies only join 2.4 GHz networks, so only those are listed. The password goes to the Shelly and is not saved.</p>
+								{#if f.wifi.offline}
+									<p class="bg-warning/15 rounded-box p-2 text-xs">This hub is on that Wi-Fi itself, so this page loses its connection for about a minute while it sets the Shelly up. The Shelly shows up in your devices when it is done.</p>
+								{/if}
+								<div class="flex justify-end gap-2">
+									<button type="button" class="btn btn-ghost btn-sm" disabled={busy !== null} onclick={() => (wifiFor = null)}>Cancel</button>
+									<button class="btn btn-primary btn-sm" disabled={busy !== null || !wifiSsid}>
+										{#if busy === f.key}<span class="loading loading-spinner loading-xs"></span>{/if}Connect</button>
+								</div>
+							{:else}
+								<p class="text-sm opacity-70">This hub hears no 2.4 GHz Wi-Fi network for the Shelly to join. Shellies cannot use 5 GHz networks.</p>
+							{/if}
+						</form>
 					{/if}
 				</li>
 			{/each}
 		</ul>
 	{/if}
+	{#each search?.notes ?? [] as note (note)}
+		<p class="bg-base-200 rounded-box p-3 text-sm opacity-80">{note}</p>
+	{/each}
 	{#if search?.error}<div role="alert" class="alert alert-error alert-soft text-sm">Search failed: {search.error}</div>{/if}
 	{#if error}<div role="alert" class="alert alert-error alert-soft text-sm">{error}</div>{/if}
 </div>

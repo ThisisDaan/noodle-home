@@ -4,7 +4,8 @@ it finds, and stops. Nothing scans in the background.
 An integration that can search sets `searchable = True` on its plugin and implements
 `search(adapter, seconds, found)` and `add_found(adapter, key)` (plugins/base.py). While a search runs, the
 state is pushed to the open pages over /api/ws as {"type": "discovery", "id", "searching", "ends", "found", "error"},
-so the interface shows the progress without asking for it.
+so the interface shows the progress without asking for it. A search may also call `found.note(text)` to tell the
+user something about the search itself (what it could not look for, and why).
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ class Discovery:
         self._total: dict[str, float] = {}
         self._found: dict[str, dict[str, dict]] = {}
         self._error: dict[str, str | None] = {}
+        self._notes: dict[str, list[str]] = {}
 
     def state(self, search_id: str) -> dict:
         task = self._tasks.get(search_id)
@@ -39,7 +41,8 @@ class Discovery:
         # `remaining` and `total` let a page count down without trusting its clock to match this one.
         return {"searching": searching, "remaining": round(left, 1), "total": self._total.get(search_id, 0),
                 "ends": self._ends.get(search_id) if searching else None,
-                "found": list(self._found.get(search_id, {}).values()), "error": self._error.get(search_id)}
+                "found": list(self._found.get(search_id, {}).values()), "error": self._error.get(search_id),
+                "notes": list(self._notes.get(search_id, []))}
 
     def _push(self, search_id: str) -> None:
         self.hub.broadcast({"type": "discovery", "id": search_id, **self.state(search_id)})
@@ -48,7 +51,7 @@ class Discovery:
         """Begin a search (replacing one that is running). `search(seconds, found)` looks for that long and calls
         found(key, name=..., detail=...) for each thing it finds; calling it again with the same key updates it."""
         self.stop(search_id, push=False)
-        self._found[search_id], self._error[search_id] = {}, None
+        self._found[search_id], self._error[search_id], self._notes[search_id] = {}, None, []
         self._ends[search_id], self._total[search_id] = time.time() + seconds, seconds
         self._tasks[search_id] = asyncio.create_task(self._run(search_id, search, seconds))
         self._push(search_id)
@@ -59,6 +62,12 @@ class Discovery:
             self._found[search_id].setdefault(key, {"key": key, "added": False}).update(info)
             self._push(search_id)
 
+        def note(text: str) -> None:
+            if text not in self._notes[search_id]:
+                self._notes[search_id].append(text)
+                self._push(search_id)
+
+        found.note = note  # type: ignore[attr-defined]
         try:
             await asyncio.wait_for(search(seconds, found), seconds + 5)
         except asyncio.TimeoutError:
@@ -79,6 +88,12 @@ class Discovery:
         if push:
             self._push(search_id)
         return self.state(search_id)
+
+    def update(self, search_id: str, key: str, **info) -> None:
+        """Change what is shown for one found thing (the step it is at while being added), after the search too."""
+        if key in self._found.get(search_id, {}):
+            self._found[search_id][key].update(info)
+            self._push(search_id)
 
     def mark_added(self, search_id: str, key: str) -> None:
         if key in self._found.get(search_id, {}):

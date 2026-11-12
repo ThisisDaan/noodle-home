@@ -1002,17 +1002,30 @@ async def stop_search(integration_id: str) -> dict:
     return discovery.stop(integration_id)
 
 
+class FoundBody(BaseModel):
+    """The Wi-Fi a found device should join, for one that asks for it (a new Shelly). Never stored."""
+    wifi_ssid: str | None = Field(None, max_length=32)
+    wifi_password: str = Field("", max_length=64)
+
+
 @app.post("/api/integrations/{integration_id}/found/{key}/add", dependencies=[Depends(require_login)])
-async def add_found(integration_id: str, key: str) -> dict:
+async def add_found(integration_id: str, key: str, body: FoundBody | None = None) -> dict:
     plugin, adapter = _searchable(integration_id)
+    extra: dict = {}
+    if body and body.wifi_ssid:
+        extra = {"wifi_ssid": body.wifi_ssid, "wifi_password": body.wifi_password,
+                 "report": lambda text: discovery.update(integration_id, key, step=text)}
     try:
-        await plugin.add_found(adapter, key)
+        await plugin.add_found(adapter, key, **extra)
     except PressButton as err:
         raise HTTPException(409, str(err) or plugin.press_hint)  # not an error: the page asks again
     except (KeyError, ValueError) as err:
         raise HTTPException(400, str(err.args[0]) if err.args else "Could not add that")
     except Exception as err:
         raise HTTPException(400, f"Could not add that: {err}")
+    finally:
+        if extra:
+            discovery.update(integration_id, key, step=None)
     if plugin.restart_after_add and plugin.source:
         await restart_adapter(plugin.source)
         await asyncio.sleep(2.5)  # give it a moment to connect, so the answer shows the result

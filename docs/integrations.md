@@ -71,4 +71,27 @@ Every integration adds devices the same way: a **Search** button that looks for 
 
 Devices that join by themselves (Zigbee2MQTT opens its network for the search) are reported with `found(..., added=True)` and need no `add_found`. Set `restart_after_add = True` if `add_found` changed settings the adapter reads.
 
+A device that first has to join the Wi-Fi is reported with `found(key, ..., wifi={"networks": [...], "current": "...", "offline": False})`. The screen then asks for the network (a dropdown of `networks`) and its password, and `add_found` gets them as `wifi_ssid` and `wifi_password`, with `report(text)` to show each step. Never store the password. A search can call `found.note(text)` to tell the user what it could not look for.
+
+## Setting up new Shellies
+
+A Shelly that is not on the Wi-Fi yet (new, or reset) opens its own network, `shelly1-…` or `ShellyPlus…-…`. Shelly's Search lists these as well. When the user picks one, enters the home Wi-Fi and presses Connect, the hub joins the Shelly's network for a few seconds, gives it the Wi-Fi details at 192.168.33.1 and goes back. Then it waits for the Shelly to show up on the home network and adds it (`plugins/shelly/hotspot.py`). This works for Gen1 (no Bluetooth) and newer Shellies alike.
+
+What the hub needs:
+
+- Wi-Fi run by NetworkManager (`nmcli`), as on Raspberry Pi OS Bookworm and later, and the Shelly within reach of it.
+- Permission to change the Wi-Fi. Running as the `noodle` user (`noodle.service`), allow it once:
+
+  ```bash
+  sudo tee /etc/polkit-1/rules.d/50-noodle-wifi.rules <<'RULES'
+  polkit.addRule(function (action, subject) {
+    if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0 && subject.user === "noodle") return polkit.Result.YES;
+  });
+  RULES
+  ```
+
+- A cable connection is best. A hub that is only on Wi-Fi leaves the network for about a minute while it does this. The page says so beforehand, and the setup carries on.
+
+Without these, Search still finds Shellies already on the network and explains how to set up a new one by hand.
+
 Before opening a pull request, see [CONTRIBUTING.md](../CONTRIBUTING.md).

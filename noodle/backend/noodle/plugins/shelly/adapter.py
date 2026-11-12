@@ -2,12 +2,19 @@
 
 Both generations are supported: Gen1 (/status, /relay/0?turn=on, /light/0) and Gen2 and newer (Plus, Pro, Mini:
 /rpc/Shelly.GetStatus, /rpc/Switch.Set, /rpc/Light.Set). A device that measures power also gets a power sensor.
+Search also finds new Shellies that are not on the Wi-Fi yet and puts them on it (hotspot.py).
 """
 
 from __future__ import annotations
 
+import asyncio
+from typing import Callable
+
 from ...hub import Device, Entity
 from ..lan.adapter import LanAdapter
+from . import hotspot
+
+JOIN_SECONDS = 120  # how long a newly set up Shelly gets to show up on the home network
 
 
 def _entity_key(prefix: str, index: int, count: int) -> tuple[str, str]:
@@ -67,6 +74,103 @@ class ShellyAdapter(LanAdapter):
     def __init__(self, hub) -> None:
         super().__init__(hub)
         self.info: dict[str, dict] = {}
+        self.wifi = hotspot.Wifi()
+        self.hotspots: dict[str, dict] = {}  # Shellies a search found that are not on the Wi-Fi yet: "ap:<ssid>" -> info
+        self._setting_up = asyncio.Lock()
+
+    # --- new Shellies that are not on the Wi-Fi yet (see hotspot.py)
+
+    async def search(self, seconds, found) -> None:
+        """Shellies on the network (mDNS), and new ones still waiting on their own Wi-Fi, at the same time."""
+        self.hotspots.clear()
+        await asyncio.gather(super().search(seconds, found), self._search_hotspots(found))
+
+    async def _search_hotspots(self, found) -> None:
+        try:
+            device = await self.wifi.device()
+            networks = await self.wifi.scan(device)
+            wired = await self.wifi.wired()
+        except hotspot.NmcliError as err:
+            if note := getattr(found, "note", None):
+                note(f"New Shellies that are not on your Wi-Fi yet cannot be set up from here: {err}. To do it by "
+                     f"hand, join the Shelly's own Wi-Fi (shelly…), open http://{hotspot.SETUP_ADDRESS} and enter "
+                     "your Wi-Fi there, then search again.")
+            return
+        homes = [n for n in networks if not hotspot.is_shelly_ap(n.ssid) and (not n.freq or n.freq < 3000)]
+        current = next((n.ssid for n in homes if n.in_use), None)
+        wifi = {"networks": [n.ssid for n in homes], "current": current, "offline": bool(current) and not wired}
+        for n in networks:
+            if hotspot.is_shelly_ap(n.ssid):
+                key = f"ap:{n.ssid}"
+                self.hotspots[key] = {"ssid": n.ssid, "device": device}
+                found(key, name=hotspot.ap_name(n.ssid), detail="New: not on your Wi-Fi yet", wifi=wifi)
+
+    async def add_found(self, key: str, wifi_ssid: str | None = None, wifi_password: str = "",
+                        report: Callable[[str], None] = lambda text: None) -> None:
+        if not key.startswith("ap:"):
+            return await super().add_found(key)
+        spot = self.hotspots.get(key)
+        if spot is None:
+            raise KeyError("That Shelly is no longer in the list; search again")
+        if not wifi_ssid:
+            raise ValueError("Pick the Wi-Fi network the Shelly should join")
+        if self.http is None:
+            raise RuntimeError("shelly is not running")
+        if self._setting_up.locked():
+            raise ValueError("Another Shelly is being set up; wait until it is done")
+        # Shielded: if the page loses its connection (the hub may be on the Wi-Fi it switches), the setup goes on.
+        await asyncio.shield(asyncio.ensure_future(self._set_up(key, spot, wifi_ssid, wifi_password, report)))
+
+    async def _set_up(self, key, spot, ssid, password, report) -> None:
+        async with self._setting_up:
+            device = spot["device"]
+            try:
+                back = await self.wifi.active(device)
+            except hotspot.NmcliError:
+                back = None
+            report("Joining the Shelly's own Wi-Fi…")
+            try:
+                await self.wifi.join(device, spot["ssid"])
+                report("Giving it your Wi-Fi details…")
+                mac = await hotspot.configure(self.http, ssid, password)
+            except hotspot.NmcliError as err:
+                raise ValueError(str(err)) from err
+            finally:
+                report("Going back to your network…")
+                await self.wifi.leave(back)
+            report(f"Waiting for it to join {ssid}…")
+            host = await self.wait_for(mac, JOIN_SECONDS)
+            if host is None:
+                raise ValueError(f"The Shelly did not show up on {ssid}. Check the password and that {ssid} is a "
+                                 "2.4 GHz network, then reset the Shelly (hold its button for about 10 seconds) "
+                                 "and search again.")
+            report("Adding it…")
+            await self.add_host(host)
+            self.hotspots.pop(key, None)
+
+    async def wait_for(self, mac: str, seconds: float) -> str | None:
+        """The address of the Shelly with this key once it announces itself on the network, or None."""
+        from ... import mdns
+
+        done = asyncio.Event()
+        result: dict[str, str] = {}
+
+        async def on_service(service_type, name, info) -> None:
+            for host in mdns.ipv4(info):
+                if done.is_set():
+                    return
+                try:
+                    key, _ = await self.identify(host)
+                except Exception:
+                    continue
+                if key == mac:
+                    result["host"] = host
+                    done.set()
+
+        await mdns.browse(list(self.mdns), seconds, on_service, until=done)
+        return result.get("host")
+
+    # --- reading and controlling
 
     async def _about(self, host: str) -> dict:
         res = await self.http.get(f"http://{host}/shelly")

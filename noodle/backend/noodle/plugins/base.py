@@ -133,11 +133,13 @@ class Plugin:
             raise NotImplementedError
         await adapter.search(seconds, found)
 
-    async def add_found(self, adapter, key: str) -> None:
+    async def add_found(self, adapter, key: str, **extra) -> None:
         """The user added one of the things search() found. Raise PressButton if the device first needs a button
         pressed; raise KeyError or ValueError with a message the user can read if it cannot be added. Things that
         join by themselves (Zigbee) are reported as found(..., added=True) and need no add_found.
-        By default the adapter's own `add_found`."""
+        A found thing reported with `wifi={"networks": [...], "current": ..., "offline": bool}` first asks the user
+        for a Wi-Fi network and password; they arrive in `extra` as wifi_ssid and wifi_password, with `report(text)`
+        to show what is happening. By default the adapter's own `add_found`."""
         if not hasattr(adapter, "add_found"):
             raise NotImplementedError
         await adapter.add_found(key)
