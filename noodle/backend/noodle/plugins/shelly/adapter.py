@@ -8,6 +8,8 @@ Search also finds new Shellies that are not on the Wi-Fi yet and puts them on it
 from __future__ import annotations
 
 import asyncio
+import sys
+import time
 from typing import Callable
 
 from ...hub import Device, Entity
@@ -15,6 +17,7 @@ from ..lan.adapter import LanAdapter
 from . import hotspot
 
 JOIN_SECONDS = 120  # how long a newly set up Shelly gets to show up on the home network
+SCAN_EVERY = 6.0  # seconds between looks at the nearby Wi-Fi networks during a search
 
 
 def _entity_key(prefix: str, index: int, count: int) -> tuple[str, str]:
@@ -74,7 +77,7 @@ class ShellyAdapter(LanAdapter):
     def __init__(self, hub) -> None:
         super().__init__(hub)
         self.info: dict[str, dict] = {}
-        self.wifi = hotspot.Wifi()
+        self.wifi = hotspot.system_wifi()
         self.hotspots: dict[str, dict] = {}  # Shellies a search found that are not on the Wi-Fi yet: "ap:<ssid>" -> info
         self._setting_up = asyncio.Lock()
 
@@ -83,22 +86,40 @@ class ShellyAdapter(LanAdapter):
     async def search(self, seconds, found) -> None:
         """Shellies on the network (mDNS), and new ones still waiting on their own Wi-Fi, at the same time."""
         self.hotspots.clear()
-        await asyncio.gather(super().search(seconds, found), self._search_hotspots(found))
+        await asyncio.gather(super().search(seconds, found), self._search_hotspots(seconds, found))
 
-    async def _search_hotspots(self, found) -> None:
-        try:
-            device = await self.wifi.device()
-            networks = await self.wifi.scan(device)
-            wired = await self.wifi.wired()
-        except hotspot.NmcliError as err:
-            if note := getattr(found, "note", None):
+    async def _search_hotspots(self, seconds: float, found) -> None:
+        """Look at the nearby Wi-Fi networks every few seconds while the search runs (only then), because a
+        Shelly that was just powered on takes a moment to open its network, and Windows lists what it last heard."""
+        note = getattr(found, "note", None) or (lambda text: None)
+        end = time.monotonic() + max(0.0, seconds - SCAN_EVERY)
+        fresh = True
+        while True:
+            try:
+                device = await self.wifi.device()
+                networks = await self.wifi.scan(device, fresh)
+                wired = await self.wifi.wired() if fresh else wired
+            except hotspot.WifiError as err:
                 note(f"New Shellies that are not on your Wi-Fi yet cannot be set up from here: {err}. To do it by "
                      f"hand, join the Shelly's own Wi-Fi (shelly…), open http://{hotspot.SETUP_ADDRESS} and enter "
                      "your Wi-Fi there, then search again.")
-            return
-        homes = [n for n in networks if not hotspot.is_shelly_ap(n.ssid) and (not n.freq or n.freq < 3000)]
+                return
+            self._report_hotspots(device, networks, wired, found)
+            if time.monotonic() >= end:
+                break
+            fresh = False
+            await asyncio.sleep(SCAN_EVERY)
+        if not self.hotspots and sys.platform == "win32":
+            note("No new Shelly heard. Windows only lists the Wi-Fi networks it heard last: open the Wi-Fi list on "
+                 "the taskbar to make it look again, then search again.")
+
+    def _report_hotspots(self, device: str, networks: list, wired: bool, found) -> None:
+        homes = [n for n in networks if not hotspot.is_shelly_ap(n.ssid)]
+        homes.sort(key=lambda n: not (hotspot.is_24(n.freq) or not n.freq))  # 2.4 GHz first (stable: in use first)
         current = next((n.ssid for n in homes if n.in_use), None)
-        wifi = {"networks": [n.ssid for n in homes], "current": current, "offline": bool(current) and not wired}
+        wifi = {"networks": [n.ssid for n in homes], "current": current, "offline": bool(current) and not wired,
+                # heard on 5 GHz only here: the Shelly cannot join it, unless the router has 2.4 GHz too
+                "only5": [n.ssid for n in homes if n.freq and not hotspot.is_24(n.freq)]}
         for n in networks:
             if hotspot.is_shelly_ap(n.ssid):
                 key = f"ap:{n.ssid}"
@@ -126,14 +147,14 @@ class ShellyAdapter(LanAdapter):
             device = spot["device"]
             try:
                 back = await self.wifi.active(device)
-            except hotspot.NmcliError:
+            except hotspot.WifiError:
                 back = None
             report("Joining the Shelly's own Wi-Fi…")
             try:
                 await self.wifi.join(device, spot["ssid"])
                 report("Giving it your Wi-Fi details…")
                 mac = await hotspot.configure(self.http, ssid, password)
-            except hotspot.NmcliError as err:
+            except hotspot.WifiError as err:
                 raise ValueError(str(err)) from err
             finally:
                 report("Going back to your network…")

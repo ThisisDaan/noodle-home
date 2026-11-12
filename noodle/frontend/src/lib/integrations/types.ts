@@ -10,8 +10,9 @@ export type Found = {
 	detail?: string;
 	added: boolean;
 	/** It has to join a Wi-Fi network first (a new Shelly): the networks it can join, the one this hub is on, and
-	 * whether this hub goes offline for a moment while it sets it up (it is on that Wi-Fi itself). */
-	wifi?: { networks: string[]; current: string | null; offline: boolean };
+	 * whether this hub goes offline for a moment while it sets it up (it is on that Wi-Fi itself). `only5`: heard on
+	 * 5 GHz only, which a Shelly cannot join (unless the router has 2.4 GHz under the same name). */
+	wifi?: { networks: string[]; current: string | null; offline: boolean; only5?: string[] };
 	/** What is happening while it is being added. */
 	step?: string | null;
 };

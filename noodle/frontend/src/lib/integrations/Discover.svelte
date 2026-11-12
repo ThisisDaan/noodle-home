@@ -63,6 +63,10 @@
 		wifiFor = wifiFor === f.key ? null : f.key;
 		if (!wifiSsid || !f.wifi?.networks.includes(wifiSsid)) wifiSsid = f.wifi?.current ?? f.wifi?.networks[0] ?? '';
 	}
+	// Browsing the hub on the hub itself (localhost) keeps working while its Wi-Fi switches.
+	const local = typeof location !== 'undefined' && ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+	const only5 = (f: Found, name: string) => !!f.wifi?.only5?.includes(name);
+
 	async function connect(key: string) {
 		await add(key, { wifi_ssid: wifiSsid, wifi_password: wifiPassword });
 		if (!error) wifiFor = null;
@@ -187,7 +191,7 @@
 							{#if f.wifi.networks.length}
 								<label class="floating-label"><span>Wi-Fi network</span>
 									<select class="select w-full" bind:value={wifiSsid} disabled={busy !== null}>
-										{#each f.wifi.networks as name (name)}<option value={name}>{name}{name === f.wifi.current ? ' (this hub)' : ''}</option>{/each}
+										{#each f.wifi.networks as name (name)}<option value={name}>{name}{name === f.wifi.current ? ' (this hub)' : ''}{only5(f, name) ? ' (5 GHz only?)' : ''}</option>{/each}
 									</select></label>
 								<label class="floating-label"><span>Wi-Fi password</span>
 									<span class="join w-full">
@@ -196,8 +200,11 @@
 										<button type="button" class="btn join-item" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => (showPassword = !showPassword)}>
 											<Icon name="eye" class="size-4 {showPassword ? '' : 'opacity-50'}" /></button>
 									</span></label>
-								<p class="text-xs opacity-60">Shellies only join 2.4 GHz networks, so only those are listed. The password goes to the Shelly and is not saved.</p>
-								{#if f.wifi.offline}
+								<p class="text-xs opacity-60">Shellies only join 2.4 GHz networks. The password goes to the Shelly and is not saved.</p>
+								{#if only5(f, wifiSsid)}
+									<p class="bg-warning/15 rounded-box p-2 text-xs">This hub only hears {wifiSsid} on 5 GHz, which a Shelly cannot join. Pick it anyway if your router also has 2.4 GHz under this name.</p>
+								{/if}
+								{#if f.wifi.offline && !local}
 									<p class="bg-warning/15 rounded-box p-2 text-xs">This hub is on that Wi-Fi itself, so this page loses its connection for about a minute while it sets the Shelly up. The Shelly shows up in your devices when it is done.</p>
 								{/if}
 								<div class="flex justify-end gap-2">
@@ -206,7 +213,7 @@
 										{#if busy === f.key}<span class="loading loading-spinner loading-xs"></span>{/if}Connect</button>
 								</div>
 							{:else}
-								<p class="text-sm opacity-70">This hub hears no 2.4 GHz Wi-Fi network for the Shelly to join. Shellies cannot use 5 GHz networks.</p>
+								<p class="text-sm opacity-70">This hub hears no Wi-Fi network for the Shelly to join.</p>
 							{/if}
 						</form>
 					{/if}

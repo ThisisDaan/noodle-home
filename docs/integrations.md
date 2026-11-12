@@ -79,8 +79,8 @@ A Shelly that is not on the Wi-Fi yet (new, or reset) opens its own network, `sh
 
 What the hub needs:
 
-- Wi-Fi run by NetworkManager (`nmcli`), as on Raspberry Pi OS Bookworm and later, and the Shelly within reach of it.
-- Permission to change the Wi-Fi. Running as the `noodle` user (`noodle.service`), allow it once:
+- Wi-Fi, and the Shelly within reach of it. On Linux the Wi-Fi must be run by NetworkManager (`nmcli`), as on Raspberry Pi OS Bookworm and later. On Windows the hub uses `netsh wlan`. Windows only lists Wi-Fi networks to apps that may use the location, so turn on Settings > Privacy & security > Location and "Let desktop apps access your location". Windows also lists only the networks it heard last, so if a new Shelly does not show up, open the Wi-Fi list on the taskbar and search again.
+- On Linux, permission to change the Wi-Fi. Running as the `noodle` user (`noodle.service`), allow it once:
 
   ```bash
   sudo tee /etc/polkit-1/rules.d/50-noodle-wifi.rules <<'RULES'
@@ -90,7 +90,7 @@ What the hub needs:
   RULES
   ```
 
-- A cable connection is best. A hub that is only on Wi-Fi leaves the network for about a minute while it does this. The page says so beforehand, and the setup carries on.
+- A cable connection is best. A hub that is only on Wi-Fi leaves the network for about a minute while it does this. The page says so beforehand (unless it is open on the hub itself), and the setup carries on.
 
 Without these, Search still finds Shellies already on the network and explains how to set up a new one by hand.
 

@@ -46,7 +46,7 @@ class FakeNmcli:
     async def __call__(self, args):
         self.calls.append(args)
         if self.fail:
-            raise hotspot.NmcliError(self.fail)
+            raise hotspot.WifiError(self.fail)
         if args[-1] == "device" and "DEVICE,TYPE,STATE" in args:
             return "wlan0:wifi:connected\neth0:ethernet:" + ("connected" if self.wired else "unavailable") + "\nlo:loopback:unmanaged\n"
         if "wifi" in args and "list" in args:
@@ -81,7 +81,7 @@ def test_search_lists_new_shellies_with_the_24ghz_networks(monkeypatch):
     async def go():
         adapter = shelly.ShellyAdapter(FakeHub())
         adapter.http = httpx.AsyncClient()
-        adapter.wifi = hotspot.Wifi(FakeNmcli(wired=False))
+        adapter.wifi = hotspot.NmcliWifi(FakeNmcli(wired=False))
         seen = {}
         await adapter.search(1, lambda key, **info: seen.__setitem__(key, info))
         await adapter.http.aclose()
@@ -90,7 +90,8 @@ def test_search_lists_new_shellies_with_the_24ghz_networks(monkeypatch):
     seen = asyncio.run(go())
     assert set(seen) == {"ap:shelly1-A4CF12B3C4D5", "ap:shellyplug-s-7C87CE"}
     wifi = seen["ap:shelly1-A4CF12B3C4D5"]["wifi"]
-    assert wifi == {"networks": ["Home:Net"], "current": "Home:Net", "offline": True}  # no 5 GHz-only, no Shellies
+    assert wifi == {"networks": ["Home:Net", "Fast5G"], "current": "Home:Net", "offline": True,
+                    "only5": ["Fast5G"]}  # no Shellies; 2.4 GHz first
 
 
 def test_search_without_networkmanager_leaves_a_note(monkeypatch):
@@ -103,7 +104,7 @@ def test_search_without_networkmanager_leaves_a_note(monkeypatch):
         discovery = Discovery(type("H", (), {"broadcast": lambda self, msg: None})())
         adapter = shelly.ShellyAdapter(FakeHub())
         adapter.http = httpx.AsyncClient()
-        adapter.wifi = hotspot.Wifi(FakeNmcli(fail=hotspot.NO_NMCLI))
+        adapter.wifi = hotspot.NmcliWifi(FakeNmcli(fail=hotspot.NO_NMCLI))
         discovery.start("shelly", adapter.search, seconds=0.2)
         await asyncio.sleep(0.5)
         await adapter.http.aclose()
@@ -146,7 +147,7 @@ def test_gen1_setup_sends_the_wifi_as_a_form_and_adds_it(monkeypatch):
         hub = FakeHub()
         adapter = shelly.ShellyAdapter(hub)
         adapter.http, adapter.running = _shelly(1, requests), True
-        adapter.wifi = hotspot.Wifi(nmcli)
+        adapter.wifi = hotspot.NmcliWifi(nmcli)
         adapter.hotspots["ap:shelly1-A4CF12B3C4D5"] = {"ssid": "shelly1-A4CF12B3C4D5", "device": "wlan0"}
         await adapter.add_found("ap:shelly1-A4CF12B3C4D5", wifi_ssid="Home:Net", wifi_password="s3cret pass",
                                 report=steps.append)
@@ -197,7 +198,7 @@ def test_setup_goes_back_home_even_when_it_fails_and_says_when_it_never_shows_up
     async def go():
         adapter = shelly.ShellyAdapter(FakeHub())
         adapter.http = _shelly(1, [])
-        adapter.wifi = hotspot.Wifi(nmcli)
+        adapter.wifi = hotspot.NmcliWifi(nmcli)
         adapter.hotspots["ap:shelly1-A4CF12B3C4D5"] = {"ssid": "shelly1-A4CF12B3C4D5", "device": "wlan0"}
         with pytest.raises(ValueError, match="did not show up on Home"):
             await adapter.add_found("ap:shelly1-A4CF12B3C4D5", wifi_ssid="Home", wifi_password="wrong")
@@ -208,3 +209,103 @@ def test_setup_goes_back_home_even_when_it_fails_and_says_when_it_never_shows_up
 
     asyncio.run(go())
     assert ["connection", "delete", "id", hotspot.CONNECTION] in nmcli.calls
+
+
+# --- Windows (netsh wlan)
+
+INTERFACES = """
+There is 1 interface on the system:
+
+    Name                   : WiFi
+    Description            : Some Wireless Adapter
+    GUID                   : 00000000-0000-0000-0000-000000000000
+    State                  : connected
+    SSID                   : Home Net
+    AP BSSID               : 00:11:22:33:44:55
+    Band                   : 5 GHz
+    Channel                : 100
+    Signal                 : 82%
+    Profile                : Home Net
+
+"""
+
+NETWORKS = """
+Interface name : WiFi
+There are 3 networks currently visible.
+
+SSID 1 : Home Net
+    Network type            : Infrastructure
+    Authentication          : WPA2-Personal
+    BSSID 1                 : 00:11:22:33:44:55
+         Signal             : 82%
+         Band               : 5 GHz
+         Channel            : 100
+    BSSID 2                 : 00:11:22:33:44:56
+         Signal             : 60%
+         Band               : 2.4 GHz
+         Channel            : 6
+
+SSID 2 : shelly1-A4CF12
+    Network type            : Infrastructure
+    Authentication          : Open
+    BSSID 1                 : a4:cf:12:00:00:01
+         Signal             : 70%
+         Channel            : 1
+
+SSID 3 : Neighbour5
+    BSSID 1                 : 00:aa:bb:cc:dd:ee
+         Signal             : 30%
+         Band               : 5 GHz
+         Channel            : 36
+"""
+
+
+class FakeNetsh:
+    def __init__(self):
+        self.calls, self.on = [], "Home Net"
+
+    async def __call__(self, args):
+        self.calls.append(args)
+        if args[:3] == ["wlan", "show", "interfaces"]:
+            return INTERFACES.replace(": Home Net\n", f": {self.on}\n", 1)
+        if args[:3] == ["wlan", "show", "networks"]:
+            return NETWORKS
+        if args[:2] == ["wlan", "connect"] and any(a.startswith("ssid=") for a in args):
+            self.on = next(a for a in args if a.startswith("ssid="))[5:]
+        return ""
+
+
+def test_netsh_output_is_read_by_shape_not_by_language():
+    assert hotspot.parse_interfaces(INTERFACES) == [{"name": "WiFi", "ssid": "Home Net", "profile": "Home Net"}]
+    dutch = INTERFACES.replace("Name ", "Naam ").replace("Profile ", "Profiel ")
+    assert hotspot.parse_interfaces(dutch)[0] == {"name": "WiFi", "ssid": "Home Net", "profile": "Home Net"}
+    nets = {n.ssid: n for n in hotspot.parse_netsh_networks(NETWORKS, "Home Net")}
+    assert nets["Home Net"].in_use and hotspot.is_24(nets["Home Net"].freq) and nets["Home Net"].signal == 82
+    assert hotspot.is_24(nets["shelly1-A4CF12"].freq)  # from the channel when there is no band line
+    assert not hotspot.is_24(nets["Neighbour5"].freq)
+    assert hotspot.explain("The location permission is not granted. See Privacy settings.") == hotspot.LOCATION
+
+
+def test_netsh_joins_the_shelly_with_a_temporary_open_profile_and_goes_back():
+    netsh = FakeNetsh()
+
+    async def go():
+        wifi = hotspot.NetshWifi(netsh)
+        device = await wifi.device()
+        back = await wifi.active(device)
+        await wifi.join(device, "shelly1-A4CF12")
+        await wifi.leave(back)
+        return device, back
+
+    device, back = asyncio.run(go())
+    assert device == "WiFi" and back == "Home Net"
+    added = next(c for c in netsh.calls if c[:3] == ["wlan", "add", "profile"])
+    assert "user=current" in added and "interface=WiFi" in added
+    assert ["wlan", "connect", f"name={hotspot.CONNECTION}", "ssid=shelly1-A4CF12", "interface=WiFi"] in netsh.calls
+    assert ["wlan", "delete", "profile", f"name={hotspot.CONNECTION}", "interface=WiFi"] in netsh.calls
+    assert netsh.calls[-1] == ["wlan", "connect", "name=Home Net", "interface=WiFi"]
+
+
+def test_profile_xml_escapes_the_name():
+    xml = hotspot._profile_xml("a<b&c")
+    assert "a&lt;b&amp;c" in xml and "<authentication>open</authentication>" in xml
