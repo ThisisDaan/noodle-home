@@ -27,19 +27,23 @@ import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import org.json.JSONObject
 
-private class Bridge(private val onSettings: () -> Unit, private val onScan: () -> Unit) {
+private class Bridge(private val onSettings: () -> Unit, private val onScan: () -> Unit, private val onShelly: () -> Unit) {
     @JavascriptInterface
     fun openSettings() { Handler(Looper.getMainLooper()).post(onSettings) }
 
     /** The page asks for a QR scan (Matter pairing); the text comes back as a `noodle-qr` event on window. */
     @JavascriptInterface
     fun scanQr() { Handler(Looper.getMainLooper()).post(onScan) }
+
+    /** The page's add-device screen opens the phone's own "Set up a new Shelly" (it joins the Shelly's Wi-Fi). */
+    @JavascriptInterface
+    fun setupShelly() { Handler(Looper.getMainLooper()).post(onShelly) }
 }
 
 /** The Noodle web interface, so the app and the browser are the same thing. The login token is traded for a cookie. */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun WebScreen(vm: NoodleViewModel, openSettings: () -> Unit) {
+fun WebScreen(vm: NoodleViewModel, openSettings: () -> Unit, setupShelly: () -> Unit) {
     var canGoBack by remember { mutableStateOf(false) }
     var web by remember { mutableStateOf<WebView?>(null) }
     BackHandler(enabled = canGoBack) { web?.goBack() }
@@ -68,7 +72,7 @@ fun WebScreen(vm: NoodleViewModel, openSettings: () -> Unit) {
                         view.evaluateJavascript("window.dispatchEvent(new CustomEvent('noodle-qr', {detail: ${JSONObject.quote(text)}}))", null)
                     }
                 }
-                addJavascriptInterface(Bridge(openSettings, scan), "NoodleApp")
+                addJavascriptInterface(Bridge(openSettings, scan, setupShelly), "NoodleApp")
                 webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                         val u = request.url

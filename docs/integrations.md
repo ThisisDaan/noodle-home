@@ -94,4 +94,6 @@ What the hub needs:
 
 Without these, Search still finds Shellies already on the network and explains how to set up a new one by hand.
 
+The Android app can do the same with the phone's Wi-Fi, which helps when the hub has no Wi-Fi or is out of reach of the Shelly: *Set up a new Shelly* on Shelly's add screen (only shown inside the app) or in the app's settings. The phone joins the Shelly's network for the app only (Android asks first), sends the Wi-Fi details the same way, lets go of the network so the phone goes back home, finds the Shelly by mDNS and adds it with `POST /api/shelly/devices`. If it cannot find it, it says to press Search in Noodle. Code: `noodle-android/app/src/main/java/app/noodle/ShellySetup.kt`.
+
 Before opening a pull request, see [CONTRIBUTING.md](../CONTRIBUTING.md).

@@ -24,6 +24,8 @@ import androidx.compose.ui.platform.LocalContext
 import app.noodle.ui.WebScreen
 import app.noodle.ui.LoginScreen
 import app.noodle.ui.SettingsScreen
+import app.noodle.ui.ShellySetupScreen
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 class MainActivity : ComponentActivity() {
     private val vm: NoodleViewModel by viewModels()
@@ -52,17 +54,24 @@ class MainActivity : ComponentActivity() {
 private fun Root(vm: NoodleViewModel) {
     val loggedIn by vm.loggedIn.collectAsState()
     var settings by remember { mutableStateOf(false) }
+    var shelly by remember { mutableStateOf(false) }
     if (!loggedIn) {
         LoginScreen(vm)
         return
     }
     // The web interface stays composed under the settings page, so it keeps its place when you come back.
     Box(Modifier.fillMaxSize()) {
-        WebScreen(vm) { settings = true }
+        WebScreen(vm, openSettings = { settings = true }, setupShelly = { shelly = true })
         if (settings) {
             BackHandler { settings = false }
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                SettingsScreen(vm) { settings = false }
+                SettingsScreen(vm, setupShelly = { shelly = true }) { settings = false }
+            }
+        }
+        if (shelly) {
+            BackHandler { shelly = false }
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                ShellySetupScreen(viewModel()) { shelly = false }
             }
         }
     }

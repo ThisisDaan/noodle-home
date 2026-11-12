@@ -88,6 +88,11 @@ class Api(private val prefs: Prefs) {
         }
     }
 
+    /** Adds a Shelly to the hub by its address (the hub's Shelly integration, as "add by IP address" does). */
+    suspend fun addShelly(host: String) {
+        post(url("api", "shelly", "devices"), buildJsonObject { put("host", JsonPrimitive(host)) })
+    }
+
     suspend fun reportPhone(report: PhoneReport) {
         val body = buildJsonObject {
             put("name", JsonPrimitive(report.name))
