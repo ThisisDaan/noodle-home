@@ -59,12 +59,17 @@
 
 	// The Wi-Fi for things that have to join it first. Kept while this screen is open, so a second one is quick.
 	let wifiFor = $state<string | null>(null);
-	let wifiSsid = $state('');
+	// A hidden network does not say its name, so it is never in the list: "Other network" lets the user type it.
+	const OTHER = '\u0000other';
+	let wifiChoice = $state('');
+	let hiddenName = $state('');
+	const wifiSsid = $derived(wifiChoice === OTHER ? hiddenName.trim() : wifiChoice);
 	let wifiPassword = $state('');
 	let showPassword = $state(false);
 	function openWifi(f: Found) {
 		wifiFor = wifiFor === f.key ? null : f.key;
-		if (!wifiSsid || !f.wifi?.networks.includes(wifiSsid)) wifiSsid = f.wifi?.current ?? f.wifi?.networks[0] ?? '';
+		const networks = f.wifi?.networks ?? [];
+		if (wifiChoice !== OTHER && !networks.includes(wifiChoice)) wifiChoice = f.wifi?.current ?? networks[0] ?? OTHER;
 	}
 	// Browsing the hub on the hub itself (localhost) keeps working while its Wi-Fi switches.
 	const local = typeof location !== 'undefined' && ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
@@ -219,31 +224,38 @@
 						<p class="text-sm">Noodle puts this Shelly on your Wi-Fi. Pick the network it should join.</p>
 						{#if f.wifi.networks.length}
 							<label class="floating-label"><span>Wi-Fi network</span>
-								<select class="select w-full" bind:value={wifiSsid} disabled={busy !== null}>
+								<select class="select w-full" bind:value={wifiChoice} disabled={busy !== null}>
 									{#each f.wifi.networks as name (name)}<option value={name}>{name}{name === f.wifi.current ? ' (this hub)' : ''}{only5(f, name) ? ' (5 GHz only?)' : ''}</option>{/each}
+									<option value={OTHER}>Other network (hidden)…</option>
 								</select></label>
-							<label class="floating-label"><span>Wi-Fi password</span>
-								<span class="join w-full">
-									<input class="input join-item w-full" type={showPassword ? 'text' : 'password'} autocomplete="off" placeholder="Wi-Fi password"
-										bind:value={wifiPassword} disabled={busy !== null} />
-									<button type="button" class="btn join-item" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => (showPassword = !showPassword)}>
-										<Icon name="eye" class="size-4 {showPassword ? '' : 'opacity-50'}" /></button>
-								</span></label>
-							<p class="text-xs opacity-60">Shellies only join 2.4 GHz networks. The password goes to the Shelly and is not saved.</p>
-							{#if only5(f, wifiSsid)}
-								<p class="bg-warning/15 rounded-box p-2 text-xs">This hub only hears {wifiSsid} on 5 GHz, which a Shelly cannot join. Pick it anyway if your router also has 2.4 GHz under this name.</p>
-							{/if}
-							{#if f.wifi.offline && !local}
-								<p class="bg-warning/15 rounded-box p-2 text-xs">This hub is on that Wi-Fi itself, so this page loses its connection for about a minute while it sets the Shelly up. The Shelly shows up in your devices when it is done.</p>
-							{/if}
-							<div class="flex justify-end gap-2">
-								<button type="button" class="btn btn-ghost btn-sm" disabled={busy !== null} onclick={() => (wifiFor = null)}>Cancel</button>
-								<button class="btn btn-primary btn-sm" disabled={busy !== null || !wifiSsid}>
-									{#if busy === f.key}<span class="loading loading-spinner loading-xs"></span>{/if}Connect</button>
-							</div>
 						{:else}
-							<p class="text-sm opacity-70">This hub hears no Wi-Fi network for the Shelly to join.</p>
+							<p class="text-xs opacity-70">This hub hears no Wi-Fi network to pick. Type the name of yours, also if it is hidden.</p>
 						{/if}
+						{#if wifiChoice === OTHER || !f.wifi.networks.length}
+							<label class="floating-label"><span>Network name</span>
+								<input class="input w-full" placeholder="Network name (exactly as on your router)" maxlength="32" autocomplete="off"
+									bind:value={hiddenName} disabled={busy !== null} /></label>
+							<p class="text-xs opacity-60">A hidden network does not show up in the list: type its name exactly, capitals included.</p>
+						{/if}
+						<label class="floating-label"><span>Wi-Fi password</span>
+							<span class="join w-full">
+								<input class="input join-item w-full" type={showPassword ? 'text' : 'password'} autocomplete="off" placeholder="Wi-Fi password"
+									bind:value={wifiPassword} disabled={busy !== null} />
+								<button type="button" class="btn join-item" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => (showPassword = !showPassword)}>
+									<Icon name="eye" class="size-4 {showPassword ? '' : 'opacity-50'}" /></button>
+							</span></label>
+						<p class="text-xs opacity-60">Shellies only join 2.4 GHz networks. The password goes to the Shelly and is not saved.</p>
+						{#if only5(f, wifiSsid)}
+							<p class="bg-warning/15 rounded-box p-2 text-xs">This hub only hears {wifiSsid} on 5 GHz, which a Shelly cannot join. Pick it anyway if your router also has 2.4 GHz under this name.</p>
+						{/if}
+						{#if f.wifi.offline && !local}
+							<p class="bg-warning/15 rounded-box p-2 text-xs">This hub is on that Wi-Fi itself, so this page loses its connection for about a minute while it sets the Shelly up. The Shelly shows up in your devices when it is done.</p>
+						{/if}
+						<div class="flex justify-end gap-2">
+							<button type="button" class="btn btn-ghost btn-sm" disabled={busy !== null} onclick={() => (wifiFor = null)}>Cancel</button>
+							<button class="btn btn-primary btn-sm" disabled={busy !== null || !wifiSsid}>
+								{#if busy === f.key}<span class="loading loading-spinner loading-xs"></span>{/if}Connect</button>
+						</div>
 					</form>
 				{/if}
 			</li>
