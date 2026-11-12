@@ -18,6 +18,9 @@
 	const search = $derived(live.discovery[id] ?? (initial ? { ...initial, at: mountedAt } : undefined));
 	const searching = $derived(!!search?.searching);
 	const found = $derived(search?.found ?? []);
+	// Things that are not on the network yet (they first have to join the Wi-Fi) come first, as their own group.
+	const fresh = $derived(found.filter((f) => f.wifi && !f.added));
+	const onNetwork = $derived(found.filter((f) => !(f.wifi && !f.added)));
 
 	// A clock for the countdown, running only while a search does.
 	let now = $state(Date.now());
@@ -167,59 +170,23 @@
 			<button type="button" class="btn btn-ghost btn-sm" onclick={cancelPress}>Cancel</button>
 		</div>
 	{:else if found.length}
-		<ul class="flex flex-col gap-1" aria-live="polite">
-			{#each found as f (f.key)}
-				<li class="bg-base-200 rounded-box flex flex-col gap-3 p-3" in:fly={{ y: 10, duration: 250 }}>
-					<div class="flex items-center gap-3">
-						<span class="min-w-0 grow">
-							<span class="block truncate font-medium">{f.name}</span>
-							{#if busy === f.key && f.step}
-								<span class="text-primary flex items-center gap-1 text-xs"><span class="loading loading-spinner loading-xs"></span>{f.step}</span>
-							{:else if f.detail}<span class="block truncate text-xs opacity-60">{f.detail}</span>{/if}
-						</span>
-						{#if f.added}
-							<span class="text-success flex items-center gap-1 text-sm"><Icon name="check" class="size-4" />Added</span>
-						{:else if f.wifi}
-							<button type="button" class="btn btn-primary btn-sm" disabled={busy !== null} onclick={() => openWifi(f)}>Set up</button>
-						{:else}
-							<button type="button" class="btn btn-primary btn-sm" disabled={busy !== null} onclick={() => add(f.key)}>Add</button>
-						{/if}
-					</div>
-					{#if f.wifi && !f.added && wifiFor === f.key}
-						<form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); if (wifiSsid) connect(f.key); }}>
-							<p class="text-sm">Noodle puts this Shelly on your Wi-Fi. Pick the network it should join.</p>
-							{#if f.wifi.networks.length}
-								<label class="floating-label"><span>Wi-Fi network</span>
-									<select class="select w-full" bind:value={wifiSsid} disabled={busy !== null}>
-										{#each f.wifi.networks as name (name)}<option value={name}>{name}{name === f.wifi.current ? ' (this hub)' : ''}{only5(f, name) ? ' (5 GHz only?)' : ''}</option>{/each}
-									</select></label>
-								<label class="floating-label"><span>Wi-Fi password</span>
-									<span class="join w-full">
-										<input class="input join-item w-full" type={showPassword ? 'text' : 'password'} autocomplete="off" placeholder="Wi-Fi password"
-											bind:value={wifiPassword} disabled={busy !== null} />
-										<button type="button" class="btn join-item" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => (showPassword = !showPassword)}>
-											<Icon name="eye" class="size-4 {showPassword ? '' : 'opacity-50'}" /></button>
-									</span></label>
-								<p class="text-xs opacity-60">Shellies only join 2.4 GHz networks. The password goes to the Shelly and is not saved.</p>
-								{#if only5(f, wifiSsid)}
-									<p class="bg-warning/15 rounded-box p-2 text-xs">This hub only hears {wifiSsid} on 5 GHz, which a Shelly cannot join. Pick it anyway if your router also has 2.4 GHz under this name.</p>
-								{/if}
-								{#if f.wifi.offline && !local}
-									<p class="bg-warning/15 rounded-box p-2 text-xs">This hub is on that Wi-Fi itself, so this page loses its connection for about a minute while it sets the Shelly up. The Shelly shows up in your devices when it is done.</p>
-								{/if}
-								<div class="flex justify-end gap-2">
-									<button type="button" class="btn btn-ghost btn-sm" disabled={busy !== null} onclick={() => (wifiFor = null)}>Cancel</button>
-									<button class="btn btn-primary btn-sm" disabled={busy !== null || !wifiSsid}>
-										{#if busy === f.key}<span class="loading loading-spinner loading-xs"></span>{/if}Connect</button>
-								</div>
-							{:else}
-								<p class="text-sm opacity-70">This hub hears no Wi-Fi network for the Shelly to join.</p>
-							{/if}
-						</form>
-					{/if}
-				</li>
-			{/each}
-		</ul>
+		{#if fresh.length}
+			<section class="flex flex-col gap-1" aria-live="polite">
+				<h3 class="text-warning flex items-center gap-1.5 text-xs font-semibold tracking-wide uppercase"><Icon name="wifi" class="size-4" />New: not on your Wi-Fi yet</h3>
+				<p class="text-xs opacity-70">Not paired yet. Set one up to put it on your Wi-Fi and add it.</p>
+				<ul class="flex flex-col gap-1">
+					{#each fresh as f (f.key)}{@render row(f, true)}{/each}
+				</ul>
+			</section>
+		{/if}
+		{#if onNetwork.length}
+			<section class="flex flex-col gap-1" aria-live="polite">
+				{#if fresh.length}<h3 class="text-xs font-semibold tracking-wide uppercase opacity-60">On your network</h3>{/if}
+				<ul class="flex flex-col gap-1">
+					{#each onNetwork as f (f.key)}{@render row(f, false)}{/each}
+				</ul>
+			</section>
+		{/if}
 	{/if}
 	{#each search?.notes ?? [] as note (note)}
 		<p class="bg-base-200 rounded-box p-3 text-sm opacity-80">{note}</p>
@@ -227,6 +194,60 @@
 	{#if search?.error}<div role="alert" class="alert alert-error alert-soft text-sm">Search failed: {search.error}</div>{/if}
 	{#if error}<div role="alert" class="alert alert-error alert-soft text-sm">{error}</div>{/if}
 </div>
+
+<!-- One thing the search found. `fresh`: it still has to join the Wi-Fi (a new Shelly), shown apart and in another colour. -->
+{#snippet row(f: Found, fresh: boolean)}
+			<li class="rounded-box flex flex-col gap-3 p-3 {fresh ? 'bg-warning/10 border-warning/50 border' : 'bg-base-200'}" in:fly={{ y: 10, duration: 250 }}>
+				<div class="flex items-center gap-3">
+					<span class="min-w-0 grow">
+						<span class="flex items-center gap-2"><span class="truncate font-medium">{f.name}</span>
+							{#if fresh}<span class="badge badge-warning badge-sm shrink-0">Not connected</span>{/if}</span>
+						{#if busy === f.key && f.step}
+							<span class="text-primary flex items-center gap-1 text-xs"><span class="loading loading-spinner loading-xs"></span>{f.step}</span>
+						{:else if f.detail}<span class="block truncate text-xs opacity-60">{f.detail}</span>{/if}
+					</span>
+					{#if f.added}
+						<span class="text-success flex items-center gap-1 text-sm"><Icon name="check" class="size-4" />Added</span>
+					{:else if f.wifi}
+						<button type="button" class="btn btn-primary btn-sm" disabled={busy !== null} onclick={() => openWifi(f)}>Set up</button>
+					{:else}
+						<button type="button" class="btn btn-primary btn-sm" disabled={busy !== null} onclick={() => add(f.key)}>Add</button>
+					{/if}
+				</div>
+				{#if f.wifi && !f.added && wifiFor === f.key}
+					<form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); if (wifiSsid) connect(f.key); }}>
+						<p class="text-sm">Noodle puts this Shelly on your Wi-Fi. Pick the network it should join.</p>
+						{#if f.wifi.networks.length}
+							<label class="floating-label"><span>Wi-Fi network</span>
+								<select class="select w-full" bind:value={wifiSsid} disabled={busy !== null}>
+									{#each f.wifi.networks as name (name)}<option value={name}>{name}{name === f.wifi.current ? ' (this hub)' : ''}{only5(f, name) ? ' (5 GHz only?)' : ''}</option>{/each}
+								</select></label>
+							<label class="floating-label"><span>Wi-Fi password</span>
+								<span class="join w-full">
+									<input class="input join-item w-full" type={showPassword ? 'text' : 'password'} autocomplete="off" placeholder="Wi-Fi password"
+										bind:value={wifiPassword} disabled={busy !== null} />
+									<button type="button" class="btn join-item" aria-label={showPassword ? 'Hide password' : 'Show password'} onclick={() => (showPassword = !showPassword)}>
+										<Icon name="eye" class="size-4 {showPassword ? '' : 'opacity-50'}" /></button>
+								</span></label>
+							<p class="text-xs opacity-60">Shellies only join 2.4 GHz networks. The password goes to the Shelly and is not saved.</p>
+							{#if only5(f, wifiSsid)}
+								<p class="bg-warning/15 rounded-box p-2 text-xs">This hub only hears {wifiSsid} on 5 GHz, which a Shelly cannot join. Pick it anyway if your router also has 2.4 GHz under this name.</p>
+							{/if}
+							{#if f.wifi.offline && !local}
+								<p class="bg-warning/15 rounded-box p-2 text-xs">This hub is on that Wi-Fi itself, so this page loses its connection for about a minute while it sets the Shelly up. The Shelly shows up in your devices when it is done.</p>
+							{/if}
+							<div class="flex justify-end gap-2">
+								<button type="button" class="btn btn-ghost btn-sm" disabled={busy !== null} onclick={() => (wifiFor = null)}>Cancel</button>
+								<button class="btn btn-primary btn-sm" disabled={busy !== null || !wifiSsid}>
+									{#if busy === f.key}<span class="loading loading-spinner loading-xs"></span>{/if}Connect</button>
+							</div>
+						{:else}
+							<p class="text-sm opacity-70">This hub hears no Wi-Fi network for the Shelly to join.</p>
+						{/if}
+					</form>
+				{/if}
+			</li>
+{/snippet}
 
 <style>
 	.radar {
