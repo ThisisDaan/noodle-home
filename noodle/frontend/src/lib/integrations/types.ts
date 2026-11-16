@@ -4,7 +4,24 @@ export type LanDevice = { key: string; name: string; address: string; available:
 export type Bulb = { mac: string; name: string; address: string; available: boolean };
 
 /** One thing a search found (backend discovery.py). */
-export type Found = { key: string; name: string; detail?: string; added: boolean };
+export type Found = {
+	key: string;
+	name: string;
+	detail?: string;
+	added: boolean;
+	/** It has to join a Wi-Fi network first (a new Shelly): the networks it can join, the one this hub is on, and
+	 * whether this hub goes offline for a moment while it sets it up (it is on that Wi-Fi itself). `only5`: heard on
+	 * 5 GHz only, which a Shelly cannot join (unless the router has 2.4 GHz under the same name). */
+	wifi?: { networks: string[]; current: string | null; offline: boolean; only5?: string[] };
+	/** What is happening while it is being added: the step, and how far along (stage of stages). */
+	step?: string | null;
+	stage?: number | null;
+	stages?: number;
+	/** Why adding it did not work (shown on the row itself). */
+	failed?: string | null;
+	host?: string;
+	port?: number;
+};
 /** A search for new devices: it runs only when the user starts it, and the server pushes what it finds. */
 export type SearchState = {
 	searching: boolean;
@@ -13,6 +30,8 @@ export type SearchState = {
 	total: number;
 	found: Found[];
 	error: string | null;
+	/** What the search could not look for, and why. */
+	notes?: string[];
 };
 
 /** One entry of the Integrations page, as the server describes it (see backend integrations.py). */
@@ -46,6 +65,8 @@ export type Integration = {
 	searchable?: boolean;
 	/** What a search looks for ("Hue bridges"), what to do on the device meanwhile, and the button to press. */
 	noun?: string;
+	/** The search starts when its screen opens (false for Zigbee pairing, which opens the network). */
+	auto_search?: boolean;
 	search_hint?: string;
 	press_hint?: string;
 	search?: SearchState;

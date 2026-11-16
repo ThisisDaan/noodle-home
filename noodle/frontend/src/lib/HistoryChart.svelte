@@ -1,14 +1,15 @@
 <script lang="ts">
+	import { BarController, BarElement, CategoryScale, Chart, Filler, LinearScale, LineController, LineElement, PointElement, Tooltip } from 'chart.js';
 	import { formatState, type Device, type Entity } from './api';
+
+	Chart.register(BarController, BarElement, CategoryScale, Filler, LinearScale, LineController, LineElement, PointElement, Tooltip);
 
 	type Row = { ts: number; key: string; value: boolean | number | string | null };
 	/** One block of time. avg is the time-weighted average (for on/off: the share of the block it was on, 0..1). */
 	type Block = { start: number; avg: number; min: number; max: number };
-	type Series = { entity: Entity; bool: boolean; last: number; blocks: (Block | null)[]; min: number; max: number };
+	type Series = { entity: Entity; bool: boolean; last: number; blocks: (Block | null)[] };
 
 	let { device, rows, from, to, size }: { device: Device; rows: Row[]; from: number; to: number; size: number } = $props();
-
-	const W = 300, H = 70, PAD = 4;
 
 	const first = $derived(Math.floor(from / size) * size); // blocks line up with the clock (e.g. :00, :15, :30)
 	const count = $derived(Math.max(1, Math.ceil((to - first) / size)));
@@ -30,64 +31,87 @@
 				}
 			});
 			const blocks = acc.map((a, b) => (a.w ? { start: first + b * size, avg: a.sum / a.w, min: a.min, max: a.max } : null));
-			const seen = blocks.filter((b): b is Block => !!b);
-			let min = Math.min(...seen.map((b) => b.min)), max = Math.max(...seen.map((b) => b.max));
-			if (min === max) { min -= 1; max += 1; }
-			out.push({ entity, bool, last: Number(mine[mine.length - 1].value), blocks, min, max });
+			out.push({ entity, bool, last: Number(mine[mine.length - 1].value), blocks });
 		}
 		return out;
 	});
 
-	const slot = $derived(W / count);
-	const y = (s: Series, v: number) => PAD + (1 - (v - s.min) / (s.max - s.min)) * (H - 2 * PAD);
-
 	const tidy = (v: number) => Math.round(v * 10) / 10; // averages come out like 9.039948958, show 9
 	const show = (s: Series, v: number) => formatState({ ...s.entity, state: s.bool ? v === 1 : tidy(v) });
 	const span = (seconds: number) => (seconds >= 86400 && seconds % 86400 === 0 ? `${seconds / 86400} d` : seconds >= 3600 && seconds % 3600 === 0 ? `${seconds / 3600} h` : `${seconds / 60} min`);
-	const when = (ts: number) => new Date(ts * 1000).toLocaleString([], to - first <= 86400 * 1.5
-		? { hour: '2-digit', minute: '2-digit' } : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+	const total = $derived(count * size);
+	const tickText = (ts: number) => {
+		const d = new Date(ts * 1000);
+		if (total <= 86400 * 1.5) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+		if (total <= 86400 * 3) return d.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+		return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+	};
+	const fullText = (ts: number) => new Date(ts * 1000).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 	const readout = (s: Series, b: Block) => (s.bool ? `On ${Math.round(b.avg * 100)}% of the time` :
 		b.min === b.max ? show(s, b.avg) : `${show(s, b.avg)} (${show(s, b.min)} to ${show(s, b.max)})`);
 
-	let hover = $state<number | null>(null); // block index under the pointer
-	function move(e: PointerEvent) {
-		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-		hover = Math.max(0, Math.min(count - 1, Math.floor(((e.clientX - rect.left) / rect.width) * count)));
+	/** Draws one series with Chart.js on a canvas; redrawn when the data changes, destroyed when the card goes away. */
+	function draw(s: Series) {
+		return (canvas: HTMLCanvasElement) => {
+			const css = getComputedStyle(canvas);
+			const ink = css.color; // set by text-base-content on the canvas
+			const accent = css.getPropertyValue('--chart-accent').trim() || css.color;
+			const grid = 'color-mix(in oklab, ' + ink + ' 15%, transparent)';
+			const labels = s.blocks.map((_, i) => first + i * size);
+			const index = (v: unknown) => labels[Number(v)] ?? 0;
+			const tip = { display: false };
+			const datasets = s.bool
+				? [{ type: 'bar' as const, data: s.blocks.map((b) => (b ? b.avg : null)), backgroundColor: accent, borderRadius: 2, categoryPercentage: 1, barPercentage: 0.9 }]
+				: [
+					{ type: 'line' as const, data: s.blocks.map((b) => (b ? b.max : null)), borderWidth: 0, pointRadius: 0, pointHitRadius: 0, backgroundColor: 'transparent', fill: false },
+					{ type: 'line' as const, data: s.blocks.map((b) => (b ? b.min : null)), borderWidth: 0, pointRadius: 0, pointHitRadius: 0, fill: '-1', backgroundColor: 'color-mix(in oklab, ' + accent + ' 22%, transparent)' },
+					{ type: 'line' as const, data: s.blocks.map((b) => (b ? b.avg : null)), borderColor: accent, backgroundColor: accent, borderWidth: 2.5, tension: 0.25, pointRadius: count <= 40 ? 3 : 0, pointHoverRadius: 6, pointHitRadius: 20, spanGaps: false }
+				];
+			const chart = new Chart(canvas, {
+				type: s.bool ? 'bar' : 'line',
+				data: { labels, datasets: datasets as never },
+				options: {
+					responsive: true,
+					maintainAspectRatio: false,
+					animation: false,
+					interaction: { mode: 'index', intersect: false },
+					layout: { padding: { top: 6, right: 4 } },
+					scales: {
+						x: { grid: { display: false }, border: { color: grid }, ticks: { color: ink, maxRotation: 0, autoSkip: true, maxTicksLimit: 5, font: { size: 12 }, callback: (v) => tickText(index(v)) } },
+						y: s.bool
+							? { min: 0, max: 1, grid: { color: grid }, border: { display: false }, ticks: { color: ink, stepSize: 1, font: { size: 12 }, callback: (v) => (v ? 'On' : 'Off') } }
+							: { grace: '8%', grid: { color: grid }, border: { display: false }, ticks: { color: ink, maxTicksLimit: 5, font: { size: 12 }, callback: (v) => show(s, Number(v)) } }
+					},
+					plugins: {
+						legend: tip,
+						tooltip: {
+							filter: (item) => item.datasetIndex === datasets.length - 1,
+							displayColors: false,
+							padding: 10,
+							bodyFont: { size: 14, weight: 'bold' },
+							titleFont: { size: 12, weight: 'normal' },
+							callbacks: {
+								title: (items) => fullText(index(items[0].dataIndex)),
+								label: (item) => { const b = s.blocks[item.dataIndex]; return b ? readout(s, b) : 'No data'; }
+							}
+						}
+					}
+				}
+			});
+			return () => chart.destroy();
+		};
 	}
 </script>
 
 {#each series as s (s.entity.key)}
-	{@const b = hover === null ? null : s.blocks[hover]}
 	<div class="bg-base-200 rounded-box flex flex-col gap-1 p-3">
-		<span class="truncate text-sm font-medium">{device.entities.length > 1 ? s.entity.name : `Per ${span(size)}`}</span>
-		<!-- fixed height, so the page does not move while the text changes under the pointer -->
-		<p class="h-5 truncate text-sm tabular-nums">
-			{#if hover !== null}
-				{b ? readout(s, b) : 'No data'}<span class="ml-2 text-xs opacity-60">{when(first + hover * size)}</span>
-			{:else}
-				{show(s, s.last)}<span class="ml-2 text-xs opacity-60">now</span>
-			{/if}
-		</p>
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="relative touch-pan-y" onpointermove={move} onpointerleave={() => (hover = null)}>
-			<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="h-24 w-full" role="img" aria-label="{s.entity.name} per {span(size)}">
-				{#each s.blocks as blk, i (i)}
-					{#if hover === i}<rect x={i * slot} y="0" width={slot} height={H} class="fill-base-content/10" />{/if}
-					{#if blk}
-						{#if s.bool}
-							<rect x={i * slot + slot * 0.1} y={H - blk.avg * (H - PAD)} width={slot * 0.8} height={blk.avg * (H - PAD)} class="fill-primary/80" />
-						{:else}
-							<!-- the bar spans the lowest to the highest value in the block; the line is the average -->
-							<rect x={i * slot + slot * 0.1} y={y(s, blk.max)} width={slot * 0.8} height={Math.max(2, y(s, blk.min) - y(s, blk.max))} class="fill-primary/35" />
-							<rect x={i * slot + slot * 0.1} y={y(s, blk.avg) - 1} width={slot * 0.8} height="2" class="fill-primary" />
-						{/if}
-					{/if}
-				{/each}
-				<line x1="0" x2={W} y1={H} y2={H} class="stroke-base-content/20" vector-effect="non-scaling-stroke" />
-			</svg>
-			<span class="pointer-events-none absolute top-0 left-0 text-[10px] opacity-60">{s.bool ? 'Always on' : show(s, s.max)}</span>
-			<span class="pointer-events-none absolute bottom-0 left-0 text-[10px] opacity-60">{s.bool ? '' : show(s, s.min)}</span>
+		<div class="flex items-baseline justify-between gap-2">
+			<span class="truncate text-sm font-medium">{device.entities.length > 1 ? s.entity.name : `Per ${span(size)}`}</span>
+			<span class="text-sm font-semibold tabular-nums">{show(s, s.last)} <span class="text-xs font-normal opacity-60">now</span></span>
 		</div>
-		<div class="flex justify-between text-[10px] opacity-60"><span>{when(first)}</span><span>{when(to)}</span></div>
+		<div class="relative h-52 w-full touch-pan-y">
+			<canvas {@attach draw(s)} class="text-base-content [--chart-accent:var(--color-primary)]" aria-label="{s.entity.name} per {span(size)}"></canvas>
+		</div>
+		<span class="text-xs opacity-60">Line is the average per {span(size)}{s.bool ? '' : '; the shaded band is the lowest to highest'}. Touch the chart to read a value.</span>
 	</div>
 {/each}

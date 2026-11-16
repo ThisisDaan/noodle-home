@@ -7,9 +7,11 @@ import asyncio
 from collections.abc import Awaitable, Callable
 
 
-async def browse(service_types: list[str], seconds: float, on_service: Callable[[str, str, object], Awaitable[None]]) -> None:
-    """For `seconds`, call `await on_service(service_type, name, info)` for every service of these types that
-    announces itself. `info` is a zeroconf AsyncServiceInfo that has been resolved (addresses, port, properties)."""
+async def browse(service_types: list[str], seconds: float, on_service: Callable[[str, str, object], Awaitable[None]],
+                 until: asyncio.Event | None = None) -> None:
+    """For `seconds` (or until `until` is set), call `await on_service(service_type, name, info)` for every service of
+    these types that announces itself. `info` is a zeroconf AsyncServiceInfo that has been resolved (addresses, port,
+    properties)."""
     from zeroconf import ServiceStateChange
     from zeroconf.asyncio import AsyncServiceBrowser, AsyncServiceInfo, AsyncZeroconf
 
@@ -29,7 +31,13 @@ async def browse(service_types: list[str], seconds: float, on_service: Callable[
 
     browser = AsyncServiceBrowser(zc.zeroconf, service_types, handlers=[changed])
     try:
-        await asyncio.sleep(seconds)
+        if until is None:
+            await asyncio.sleep(seconds)
+        else:
+            try:
+                await asyncio.wait_for(until.wait(), seconds)
+            except asyncio.TimeoutError:
+                pass
     finally:
         await browser.async_cancel()
         for task in pending:

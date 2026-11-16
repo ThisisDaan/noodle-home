@@ -65,11 +65,40 @@ The YAML files are still there, because they're a great format for storage, back
 
 ## Install
 
-Noodle runs on anything with Python 3.11 or Docker: a Raspberry Pi, a mini PC or a home server.
+Pick your computer. Each takes about 10 minutes, and most of that is waiting. Noodle needs no account and no cloud.
 
-### Docker (recommended)
+### Windows
 
-Linux only, since Noodle uses the host network to reach your devices.
+1. **Download Noodle:** [click here for the ZIP](https://github.com/ThisisDaan/noodle-home/archive/refs/heads/main.zip). Right-click the downloaded file and choose **Extract All**.
+2. Open the extracted folder, then the **noodle** folder inside it, and **double-click `run.bat`**.
+   - If Windows says "Windows protected your PC", click **More info**, then **Run anyway**.
+   - If Python or Bun is missing, it asks to install them. Press **Y**. If it then asks you to double-click `run.bat` again, do that.
+3. Wait a few minutes the first time. When the window that opened says `Noodle is starting`, open **http://localhost:8090** in your browser. A short setup wizard walks you through the rest. Every step can be skipped.
+4. If Windows Firewall asks about Python, choose **Private networks**, so your phone and other devices can open Noodle too.
+
+To start Noodle again later, double-click `run.bat` again. To stop it, close that window. Bluetooth sensors need Bluetooth switched on in Windows.
+
+### macOS
+
+1. Open **Terminal** and install the tools. If you do not have [Homebrew](https://brew.sh), install that first.
+   ```bash
+   brew install python@3.12 git
+   curl -fsSL https://bun.sh/install | bash
+   ```
+   Close Terminal and open it again.
+2. Download and start Noodle:
+   ```bash
+   git clone https://github.com/ThisisDaan/noodle-home.git
+   cd noodle-home/noodle
+   ./run.sh
+   ```
+3. Open **http://localhost:8090** when you see `Noodle is starting`.
+
+For Bluetooth sensors, allow Terminal under System Settings → Privacy & Security → Bluetooth.
+
+### Raspberry Pi, mini PC or Linux server (recommended for always-on)
+
+A small always-on computer is the best home for Noodle, since it keeps running when your PC is off. Install Docker (see [docs.docker.com/engine/install](https://docs.docker.com/engine/install/), or on a Pi `curl -fsSL https://get.docker.com | sh`), then:
 
 ```bash
 git clone https://github.com/ThisisDaan/noodle-home.git
@@ -77,11 +106,23 @@ cd noodle-home/noodle
 docker compose up -d
 ```
 
-Then open `http://<your-machine>:8090`. A short setup wizard asks for your home's name and location, which services you use, and helps you pair a first device. Every step can be skipped.
+Open `http://<your-machine>:8090` from any device on your network. No Docker? `./run.sh` works on Linux too (needs Python 3.11 to 3.13 and Bun).
 
-Your data lives in `noodle/data/`. Updates are installed from **System → Check for updates** (this needs the Docker socket mount that is already in `compose.yaml`).
+### Let an AI install it for you
 
-### pip
+Paste this into ChatGPT, Claude or any AI assistant that can run commands on your computer:
+
+> Install Noodle on my computer by following https://github.com/ThisisDaan/noodle-home/blob/main/docs/INSTALL-AI.md
+
+### Good to know
+
+- **Updating:** with Docker, use **System → Check for updates** in the app. With the run script, run `run.bat --update` (in a terminal) or `./run.sh --update`.
+- **Your data** (settings, automations, history) is in the `noodle/data/` folder. Copy it to back up.
+- **Stuck?** If it says Python or Bun is missing even after installing, close the window and start it again. Noodle works with Python 3.11, 3.12 or 3.13, not newer. Still stuck? [Open an issue](https://github.com/ThisisDaan/noodle-home/issues).
+- **Updating a ZIP install:** `--update` needs Git. Without it, download the ZIP again and copy your old `noodle/data` folder into the new one.
+
+### Advanced: pip
+
 
 ```bash
 ./noodle/build-wheel.sh               # needs bun and `pip install build`
@@ -90,7 +131,7 @@ python3 -m venv /opt/noodle/venv
 NOODLE_DATA=$HOME/noodle-data /opt/noodle/venv/bin/noodle
 ```
 
-To run it as a service, copy [`noodle/noodle.service`](noodle/noodle.service) to `/etc/systemd/system/`, adjust the user and paths, and run `sudo systemctl enable --now noodle`. Bluetooth sensors need BlueZ.
+To run it as a service, copy [`noodle/noodle.service`](noodle/noodle.service) to `/etc/systemd/system/`, adjust the user and paths, and run `sudo systemctl enable --now noodle`. Bluetooth sensors need BlueZ on Linux.
 
 ## Integrations
 
@@ -148,6 +189,7 @@ See [docs/configuration.md](docs/configuration.md) for the file layout and [docs
 | [Configuration](docs/configuration.md) | config files, card designer, custom devices, environment variables |
 | [Writing an integration](docs/integrations.md) | plugin structure, flow nodes, device search |
 | [Flows and AI](docs/AI.md) | how AIs should write flows |
+| [Install with an AI](docs/INSTALL-AI.md) | steps an AI assistant can follow to install Noodle |
 | [Changelog](CHANGELOG.md) | what changed in each release |
 
 ## Development

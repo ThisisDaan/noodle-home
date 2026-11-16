@@ -1,6 +1,8 @@
 @import 'tailwindcss';
+/* The themes a hub can pick (System › Appearance, lib/theme.ts): Noodle's own two below, and some of daisyUI's.
+   Without a choice, Noodle Light or Noodle Dark follows the device's light or dark mode. */
 @plugin 'daisyui' {
-	themes: false;
+	themes: dracula, nord, night, dim, sunset, synthwave, forest, coffee, emerald, cupcake, winter, corporate;
 }
 
 @plugin 'daisyui/theme' {
@@ -65,7 +67,7 @@ body {
 }
 
 /* Device tiles. A card is w x h cells of the dashboard grid (--cw, --ch); the grids give a cell 9rem of height. On a
-   phone there are two columns, so a card two or more cells wide takes the full width and a one-cell card half. */
+   phone there is one column, so every card takes the full width. */
 .card-span {
 	grid-row: span var(--ch, 1);
 }

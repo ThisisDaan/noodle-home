@@ -192,7 +192,7 @@
 		{#if isNumeric(live.devices[data.device_id]?.entities.find((e) => e.key === data.key))}
 			<label class="floating-label"><span>Check</span>
 				<select class="select select-sm w-full" value={data.op ?? 'gt'} onchange={(e) => set({ op: e.currentTarget.value })}>
-					<option value="gt">greater than</option><option value="lt">less than</option><option value="eq">equals</option>
+					<option value="gt">greater than</option><option value="lt">less than</option><option value="eq">equals</option><option value="neq">does not equal</option>
 				</select>
 			</label>
 			<label class="floating-label"><span>Value</span>
@@ -292,9 +292,6 @@
 			<li><b>Stop</b>: ends it, e.g. connect "Let go after hold" to it.</li>
 			<li>The safety limit stops it after {data.max_seconds}s if a stop is missed.</li>
 		</ul>
-	{:else if type === 'action.delay'}
-		<label class="floating-label"><span>Seconds</span>
-			<input type="number" min="0" class="input input-sm w-full" value={data.seconds} onchange={(e) => set({ seconds: Number(e.currentTarget.value) })} /></label>
 	{:else if type === 'action.timer'}
 		<label class="floating-label"><span>Minutes</span>
 			<input type="number" min="0" step="0.5" class="input input-sm w-full" value={data.minutes} onchange={(e) => set({ minutes: Number(e.currentTarget.value) })} /></label>
@@ -340,21 +337,6 @@
 					<input class="input input-sm w-full" value={data.value} onchange={(e) => set({ value: e.currentTarget.value })} /></label>
 			{/if}
 		{/if}
-	{:else if type === 'action.var'}
-		<label class="floating-label"><span>Variable</span>
-			<input class="input input-sm w-full" value={data.name} onchange={(e) => set({ name: e.currentTarget.value })} /></label>
-		<label class="floating-label"><span>Value ({'{now}'} = date/time)</span>
-			<input class="input input-sm w-full" value={data.value} onchange={(e) => set({ value: e.currentTarget.value })} /></label>
-	{:else if type === 'cond.var'}
-		<label class="floating-label"><span>Variable</span>
-			<input class="input input-sm w-full" value={data.name} onchange={(e) => set({ name: e.currentTarget.value })} /></label>
-		<label class="floating-label"><span>Check</span>
-			<select class="select select-sm w-full" value={data.op} onchange={(e) => set({ op: e.currentTarget.value })}>
-				<option value="eq">equals</option><option value="neq">is not</option>
-			</select>
-		</label>
-		<label class="floating-label"><span>Value</span>
-			<input class="input input-sm w-full" value={data.value} onchange={(e) => set({ value: e.currentTarget.value })} /></label>
 	{:else if type === 'trigger.sun'}
 		<label class="floating-label"><span>When</span>
 			<select class="select select-sm w-full" value={data.event ?? 'sunset'} onchange={(e) => set({ event: e.currentTarget.value })}>

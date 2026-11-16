@@ -177,6 +177,14 @@ export function minSize(design: CardDesign): { w: number; h: number } {
  * null.) */
 export function defaultDesign(device: Device): CardDesign | null {
 	const slots: CardSlot[] = [];
+	if (device.id === 'custom:variables') {
+		// The built-in Variables device: a row for each, the name in a plain bar and the value in a coloured one.
+		const list = device.entities.slice(0, MAX_H * PER_ROW);
+		list.forEach((e, i) => slots.push(
+			{ x: 0, y: i, w: 2, h: 1, component: 'text', key: e.key, style: 'chip', template: '{name}' },
+			{ x: 2, y: i, w: 2, h: 1, component: 'text', key: e.key, style: 'chip', template: '{color primary}{b}{value}{/b}' }));
+		return slots.length ? { w: 1, h: Math.max(1, Math.ceil(list.length / PER_ROW)), slots } : null;
+	}
 	const add = (component: CardComponentType, key: string | undefined, w: number, style?: CardStyle) => {
 		if (!key) return;
 		const x = slots.reduce((m, s) => Math.max(m, s.x + s.w), 0);

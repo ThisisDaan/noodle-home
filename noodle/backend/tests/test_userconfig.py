@@ -231,7 +231,7 @@ def test_wizard_shows_for_a_new_hub_until_finished(files, monkeypatch):
     main.store.db.execute("DELETE FROM settings WHERE key IN ('password', 'setup_started')")
     try:
         client = TestClient(main.app)
-        assert client.get("/api/auth/status").json() == {"setup_needed": True, "logged_in": False, "wizard": False}
+        assert client.get("/api/auth/status").json() == {"setup_needed": True, "logged_in": False, "wizard": False, "theme": ""}
         assert client.post("/api/auth/setup", json={"password": "correct horse"}).status_code == 200
         assert client.get("/api/auth/status").json()["wizard"] is True
         main._mark_existing_install_done()  # a restart in the middle of the wizard

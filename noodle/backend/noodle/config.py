@@ -10,17 +10,16 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .yamlfile import YamlFile
 
 def _env(name: str, default=None):
-    """NOODLE_<NAME> from the environment; the older HOMEPI_<NAME> still works."""
-    return os.environ.get(f"NOODLE_{name}", os.environ.get(f"HOMEPI_{name}", default))
+    """NOODLE_<NAME> from the environment."""
+    return os.environ.get(f"NOODLE_{name}", default)
 
 
 DATA_DIR = Path(_env("DATA", "/data"))
 
 
 def db_path() -> Path:
-    """The database: noodle.db for a new hub, homepi.db on a hub that already had it under the old name."""
-    new, old = DATA_DIR / "noodle.db", DATA_DIR / "homepi.db"
-    return old if old.exists() and not new.exists() else new
+    """The database."""
+    return DATA_DIR / "noodle.db"
 # Files you can edit by hand (flows as YAML). Next to the database by default.
 CONFIG_DIR = Path(_env("CONFIG", DATA_DIR / "config"))
 # The web interface: inside the installed package (pip), or next to it (the Docker image sets NOODLE_STATIC).
@@ -53,6 +52,17 @@ LOCATION_SET = _env("LAT") is not None and _env("LON") is not None
 # Set once the first-run wizard is finished or skipped (installs from before the wizard count as done).
 SETUP_DONE = False
 HOME_NAME = ""
+# The theme of the interface for the whole hub: one of THEMES (frontend lib/theme.ts has the same list). Empty: Noodle
+# Light or Noodle Dark, following each phone or computer's light or dark mode.
+THEME = ""
+THEMES = ("noodle-light", "noodle-dark", "dracula", "nord", "night", "dim", "sunset", "synthwave", "forest", "coffee",
+          "emerald", "cupcake", "winter", "corporate")
+
+
+def theme() -> str:
+    """The chosen theme, or "" when none is chosen or the file holds something else (such as the colour map a
+    development version kept there)."""
+    return THEME if isinstance(THEME, str) and THEME in THEMES else ""
 # Time zone name such as Europe/Amsterdam. Empty: the one of this machine (the TZ variable).
 TIMEZONE = _env("TZ", "")
 _ORIGINAL_TZ = os.environ.get("TZ")
@@ -77,12 +87,6 @@ HUE_BRIDGES: dict = dict(item.split("=", 1) for item in os.environ.get("HUE_BRID
 
 # Integrations the user added on the Integrations page (empty = work it out from what is set up, see integrations.py).
 INTEGRATIONS: list[str] = []
-
-# The old thermostat integration (a room sensor and a heater plug). It is now the Thermostat node in a flow;
-# these are only read once, to turn an old install's settings into that flow (migrations.retire_thermostat).
-THERMOSTAT_ID = "thermostat:main"
-THERMOSTAT_NAME = "Thermostat"
-THERMOSTAT_SENSOR_DEVICE = THERMOSTAT_SENSOR_KEY = THERMOSTAT_HEATER_DEVICE = THERMOSTAT_HEATER_KEY = ""
 
 # LIFX: the bulbs the user added (address by hardware id), and extra addresses to search when a broadcast
 # does not reach them. Nothing searches except when the user presses Search.
@@ -128,14 +132,9 @@ SETTINGS: dict[str, tuple[str, str, str | None]] = {
     "ntfy_url": ("NTFY_URL", "str", "ntfy"), "ntfy_topic": ("NTFY_TOPIC", "str", "ntfy"),
     "latitude": ("LATITUDE", "lat", "system"), "longitude": ("LONGITUDE", "lon", "system"),
     "timezone": ("TIMEZONE", "tz", "system"), "home_name": ("HOME_NAME", "str", "system"),
-    "setup_done": ("SETUP_DONE", "bool", None),
+    "setup_done": ("SETUP_DONE", "bool", None), "theme": ("THEME", "str", "appearance"),
     "public_url": ("PUBLIC_URL", "str", "system"), "docker_socket": ("DOCKER_SOCKET", "str", "system"),
     "hue_host": ("HUE_HOST", "str", "hue"), "hue_key": ("HUE_KEY", "str", "hue"), "hue_bridges": ("HUE_BRIDGES", "pairs", "hue"),
-    "thermostat_id": ("THERMOSTAT_ID", "str", "thermostat"), "thermostat_name": ("THERMOSTAT_NAME", "str", "thermostat"),
-    "thermostat_sensor_device": ("THERMOSTAT_SENSOR_DEVICE", "str", "thermostat"),
-    "thermostat_sensor_key": ("THERMOSTAT_SENSOR_KEY", "str", "thermostat"),
-    "thermostat_heater_device": ("THERMOSTAT_HEATER_DEVICE", "str", "thermostat"),
-    "thermostat_heater_key": ("THERMOSTAT_HEATER_KEY", "str", "thermostat"),
     "lifx_hosts": ("LIFX_HOSTS", "list", "lifx"), "lifx_bulbs": ("LIFX_BULBS", "pairs", "lifx"),
     "shelly_devices": ("SHELLY_DEVICES", "pairs", "shelly"), "wled_devices": ("WLED_DEVICES", "pairs", "wled"),
     "kasa_devices": ("KASA_DEVICES", "pairs", "kasa"), "sonos_devices": ("SONOS_DEVICES", "pairs", "sonos"),

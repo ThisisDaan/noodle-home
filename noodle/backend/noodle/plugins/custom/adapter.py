@@ -2,8 +2,8 @@
 
 A custom device "custom:<id>" has fields, each shown as one entity: a switch (on/off), a number or text. A flow
 fills them with the "Write to entity" step, and everything that works with a device works with them: the Devices
-page, "Device changes", checks, the dashboard. The old flow variables live here too, as the text fields of the
-built-in "Variables" device (see `_migrate_variables`).
+page, "Device changes", checks, the dashboard. The flow variables live here too, as the text fields of the
+built-in "Variables" device.
 """
 
 from __future__ import annotations
@@ -55,43 +55,10 @@ class CustomAdapter:
         self.devices: dict[str, dict] = {
             row["id"]: {"id": row["id"], "name": row["name"], "fields": json.loads(row["fields"])}
             for row in self.db.execute("SELECT * FROM custom_devices").fetchall()}
-        self._migrate_variables()
 
     async def run(self) -> None:
         for device in self.devices.values():
             self._publish(device)
-
-    # --- the old variables become the text fields of one device
-
-    def _migrate_variables(self) -> None:
-        """Move the flow variables into the "Variables" device. The old table is left as it is, nothing is
-        deleted, and a variable that is already a field (and its newer value) is never overwritten, so this is
-        safe to run on every start."""
-        try:
-            old = self.db.execute("SELECT name, value, updated FROM variables").fetchall()
-        except Exception:  # a database that never had variables
-            old = []
-        if not old and VARIABLES_ID not in self.devices:
-            return
-        device = self._variables_device()
-        changed = False
-        for row in old:
-            if not any(f["key"] == row["name"] for f in device["fields"]):
-                device["fields"].append({"key": row["name"], "label": row["name"], "type": "text"})
-                changed = True
-            if not self.db.execute("SELECT 1 FROM custom_values WHERE device_id = ? AND key = ?",
-                                   (VARIABLES_ID, row["name"])).fetchone():
-                self.db.execute("INSERT INTO custom_values VALUES (?, ?, ?, ?)",
-                                (VARIABLES_ID, row["name"], row["value"], row["updated"]))
-                changed = True
-        if changed:
-            self._store(device)
-            self.db.commit()
-
-    def _variables_device(self) -> dict:
-        if VARIABLES_ID not in self.devices:
-            self.devices[VARIABLES_ID] = {"id": VARIABLES_ID, "name": "Variables", "fields": []}
-        return self.devices[VARIABLES_ID]
 
     # --- managing devices (from the API)
 
@@ -219,18 +186,7 @@ class CustomAdapter:
         self._publish(device)
         return typed
 
-    # --- the flow variables (see the "Set variable" and "Check variable" steps)
-
-    def set_variable(self, name: str, value: str) -> None:
-        device = self._variables_device()
-        if not any(f["key"] == name for f in device["fields"]):
-            device["fields"].append({"key": name, "label": name, "type": "text"})
-            self._store(device)
-        self.write(VARIABLES_ID, name, value)
-
-    def get_variable(self, name: str) -> str | None:
-        raw = self._raw(VARIABLES_ID, name)
-        return raw[0] if raw else None
+    # --- the flow variables: the text fields of the built-in Variables device
 
     def variables(self) -> dict[str, dict]:
         device = self.devices.get(VARIABLES_ID)

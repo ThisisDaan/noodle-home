@@ -26,6 +26,6 @@ python -m noodle validate                                             # check fl
 - Anything that migrates a user's data needs a test with the old shape and must be safe to run twice.
 - Keep personal device ids, names and addresses out of the code and examples. Use placeholders.
 - Only support devices and services that can be controlled locally (LAN, local API, Zigbee, Matter, BLE). No cloud-only integrations; a cloud account may be needed once to pair, never to run.
-- Never scan for devices in a background loop. Discovery runs only while the user starts a search (`discovery.py`, `Discover.svelte`); added devices are saved and polled by address.
+- Never scan for devices in a background loop. Discovery runs only while a search the user asked for is running: it starts when the user opens a search screen or presses Search, and stops after a short time (`discovery.py`, `Discover.svelte`). Pairing that opens a network (Zigbee `permit_join`) waits for the button (`auto_search = False`); added devices are saved and polled by address.
 - A live hub runs from this code on a Pi: back up `data/noodle/noodle.db` before deploying, and dry-run migrations on a copy.
 - Flow-writing guidance for AIs is in `docs/AI.md`; the prompt text is `RULES` in `noodle/backend/noodle/aicontext.py`.

@@ -5,7 +5,7 @@ import { deviceKind, type DeviceKind } from './devices/kinds.ts';
 import { placeBefore } from './order.ts';
 
 export type Widget = {
-	type: 'status' | 'favourites' | 'rooms' | 'flows' | 'sensor';
+	type: 'favourites' | 'rooms' | 'flows' | 'sensor';
 	title?: string;
 	/** sensor: which reading to show */
 	device_id?: string;
@@ -27,7 +27,7 @@ export type SavedLayout = {
 	card_defaults?: Record<string, CardDesign>;
 };
 
-export const DEFAULT_WIDGETS: Widget[] = [{ type: 'status' }, { type: 'favourites' }, { type: 'rooms' }];
+export const DEFAULT_WIDGETS: Widget[] = [{ type: 'favourites' }, { type: 'rooms' }];
 
 /** Dashboard layout (room order, hidden and pinned devices, tile order), stored on the hub. */
 class Layout {
@@ -58,7 +58,7 @@ class Layout {
 
 	/** The cards on the dashboard, in order. */
 	get activeWidgets(): Widget[] {
-		return this.widgets ?? DEFAULT_WIDGETS;
+		return (this.widgets ?? DEFAULT_WIDGETS).filter((w) => (w.type as string) !== 'status'); // the old Status card is gone
 	}
 
 	addWidget(widget: Widget) {

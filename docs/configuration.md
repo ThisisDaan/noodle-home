@@ -34,7 +34,7 @@ Changing a setting restarts only the integration it belongs to. The database (`n
 
 On the Devices page, *New custom device* makes a device of your own with the values it should remember: on/off, a number (with a unit and optional min, max and step) or text. Automations fill them in with the **Write to entity** step, and they behave like any other device: they show on the Devices page, other flows react to them, and they can go on the dashboard.
 
-The older flow variables are the text fields of a built-in *Variables* device (*Set variable* and *Check variable* still work).
+Flow variables are the text fields of a built-in *Variables* device; a flow sets one with *Write to entity* and checks it with *Check state*.
 
 ## Card designer
 
@@ -69,4 +69,3 @@ A device's default look is built from the same components, so the designer alway
 | `NOODLE_AUTOMATIONS` | `0` stops flows from running (for development) |
 | `MQTT_HOST`, `MATTER_URL`, `OTBR_URL` | point a development hub at services elsewhere |
 
-The older `HOMEPI_*` names still work.

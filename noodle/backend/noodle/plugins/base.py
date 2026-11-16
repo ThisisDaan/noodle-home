@@ -104,6 +104,7 @@ class Plugin:
     # devices join by themselves) or "hub" (exactly one connection, like a DIRIGERA hub; set up once).
     search_finds: str = "devices"
     noun: str = "devices"  # what a search looks for, for the interface: "bulbs", "sensors", ...
+    auto_search: bool = True  # the search starts when its screen opens; False where searching changes something (Zigbee pairing opens the network)
     search_hint: str = ""  # shown while searching: what to do on the device (put it in pairing mode, ...)
     press_hint: str = ""  # shown while waiting for the button, when add_found raises PressButton
     restart_after_add: bool = False  # add_found changed settings, so the adapter reconnects
@@ -133,11 +134,14 @@ class Plugin:
             raise NotImplementedError
         await adapter.search(seconds, found)
 
-    async def add_found(self, adapter, key: str) -> None:
+    async def add_found(self, adapter, key: str, **extra) -> None:
         """The user added one of the things search() found. Raise PressButton if the device first needs a button
         pressed; raise KeyError or ValueError with a message the user can read if it cannot be added. Things that
         join by themselves (Zigbee) are reported as found(..., added=True) and need no add_found.
-        By default the adapter's own `add_found`."""
+        A found thing reported with `wifi={"networks": [...], "current": ..., "offline": bool}` first asks the user
+        for a Wi-Fi network and password; they arrive in `extra` as wifi_ssid and wifi_password, with
+        `report(text, stage=n, stages=total)` to show what is happening (on the found row, with a progress bar), and
+        `report(None, detail=...)` at the end to say where it ended up. By default the adapter's own `add_found`."""
         if not hasattr(adapter, "add_found"):
             raise NotImplementedError
         await adapter.add_found(key)

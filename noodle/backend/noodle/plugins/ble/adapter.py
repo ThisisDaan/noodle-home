@@ -1,6 +1,8 @@
 """Bluetooth temperature and humidity sensors, read from the advertisements they broadcast.
 
-No pairing is needed: a passive listener on this machine's Bluetooth (BlueZ over D-Bus on Linux) hears them.
+No pairing is needed: a passive listener on this machine's Bluetooth hears them (BlueZ on Linux, the Windows
+Bluetooth stack on Windows, CoreBluetooth on macOS; all through bleak). macOS hides real addresses, so there a
+sensor is identified by an id the Mac makes up, which only works on that Mac.
 While the user has pressed Search it also keeps a list of what is nearby, so the sensors can be added.
 
 Supported, each by its own decoder below (add one function and an entry in DECODERS for a new brand):
@@ -112,6 +114,19 @@ def decode(adv) -> tuple[str, str, dict] | None:
     return None
 
 
+def explain_error(err: Exception) -> str:
+    """A plain sentence for the usual reasons the Bluetooth listener cannot start."""
+    text = str(err) or type(err).__name__
+    low = text.lower()
+    if getattr(err, "winerror", None) == -2147020577 or "not ready for use" in low or "turned off" in low or "powered off" in low:
+        return "Bluetooth is switched off. Turn it on in your system settings; Noodle retries by itself."
+    if "no bluetooth adapter" in low or "no adapter" in low or "not found" in low and "adapter" in low:
+        return "No Bluetooth adapter was found on this machine."
+    if "not authorized" in low or "permission" in low:
+        return "Bluetooth access was denied. Allow it for your terminal or Python in the system privacy settings."
+    return text
+
+
 def _clean(name: str) -> str:
     """Names are saved as MAC=Name,MAC=Name, so those two characters cannot be in a name."""
     return name.replace(",", " ").replace("=", " ").strip()
@@ -161,7 +176,7 @@ class BleAdapter:
                 except asyncio.CancelledError:
                     raise
                 except Exception as err:
-                    self.error = str(err) or type(err).__name__
+                    self.error = explain_error(err)
                     log.warning("Bluetooth scanner stopped (%s), retrying in 30s", self.error)
                 finally:
                     self.scanning = False

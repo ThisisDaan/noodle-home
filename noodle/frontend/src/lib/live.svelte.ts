@@ -2,6 +2,7 @@ import type { Device } from './api';
 import { applyActivity, type FlowMessage } from './flow/activity.svelte.ts';
 import type { SearchState } from './integrations/types.ts';
 import { layout, type SavedLayout } from './layout.svelte.ts';
+import { known } from './theme.ts';
 
 export type FlowSummary = { id: string; name: string; enabled: boolean; last_run: number | null; last_error: string | null; nodes: number; manual?: boolean };
 export type Variables = Record<string, { value: string; updated: number }>;
@@ -10,8 +11,9 @@ export type FlowIssues = Record<string, { errors: string[]; warnings: string[] }
 export type HistoryRow = { device_id: string; key: string; ts: number; value: boolean | number | string | null };
 
 type Message =
-	| { type: 'snapshot'; devices: Device[]; areas: string[]; flow_issues?: FlowIssues; home_name?: string }
+	| { type: 'snapshot'; devices: Device[]; areas: string[]; flow_issues?: FlowIssues; home_name?: string; theme?: unknown }
 	| { type: 'home'; name: string }
+	| { type: 'theme'; theme: unknown }
 	| { type: 'flow_files'; issues: FlowIssues }
 	| { type: 'areas'; areas: string[] }
 	| { type: 'layout'; layout: SavedLayout }
@@ -31,6 +33,8 @@ class Live {
 	flows = $state<FlowSummary[] | null>(null);
 	/** What the household called its home in the setup (empty until then). */
 	homeName = $state('');
+	/** The hub's theme id ('' for Noodle, following the device); undefined until the hub has said. */
+	theme = $state<string | undefined>(undefined);
 	/** Problems found in flow files that were edited by hand (file name -> errors and warnings). */
 	flowIssues = $state<FlowIssues>({});
 	/** Called with each new flow log line. */
@@ -47,6 +51,10 @@ class Live {
 
 	get list(): Device[] {
 		return Object.values(this.devices).sort((a, b) => a.name.localeCompare(b.name));
+	}
+
+	setTheme(theme: unknown) {
+		this.theme = known(theme);
 	}
 
 	start() {
@@ -78,6 +86,9 @@ class Live {
 				this.areas = msg.areas;
 				this.flowIssues = msg.flow_issues ?? {};
 				this.homeName = msg.home_name ?? '';
+				this.setTheme(msg.theme);
+			} else if (msg.type === 'theme') {
+				this.setTheme(msg.theme);
 			} else if (msg.type === 'home') {
 				this.homeName = msg.name;
 			} else if (msg.type === 'flow_files') {
