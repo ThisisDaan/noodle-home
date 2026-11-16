@@ -6,15 +6,9 @@
 	import SensorWidget from '#lib/SensorWidget.svelte';
 	import { live } from '#lib/live.svelte.ts';
 
-	// Loaded once; a flow setting a variable pushes the new values.
-	const variablesDevice = $derived(live.list.find((d) => d.id === 'custom:variables'));
-	const vars = $derived(
-		Object.fromEntries((variablesDevice?.entities ?? []).map((e) => [e.name, { value: e.state == null ? '' : String(e.state), updated: variablesDevice?.last_seen ?? null }]))
-	);
-
 	const widgets = $derived(layout.activeWidgets);
 	const WIDGET_NAMES: Record<Widget['type'], string> = {
-		status: 'Status', favourites: 'Favourites', rooms: 'Rooms', flows: 'Quick actions', sensor: 'Sensor'
+		favourites: 'Favourites', rooms: 'Rooms', flows: 'Quick actions', sensor: 'Sensor'
 	};
 	const manualFlows = $derived((live.flows ?? []).filter((f) => f.manual));
 	let newSensor = $state('');
@@ -114,25 +108,11 @@
 	</div>
 {/if}
 
-{#snippet statusBlock()}
-{#if Object.keys(vars).length}
-	<section class="mb-8" aria-label="Status">
-		<div class="flex flex-wrap gap-2">
-			{#each Object.entries(vars) as [name, v] (name)}
-				<div class="bg-base-100 border-base-content/10 rounded-field flex items-baseline gap-2 border px-3 py-1.5 text-sm" title="updated {ago(v.updated)}">
-					<span class="opacity-60">{name}</span><b>{v.value || '–'}</b>
-				</div>
-			{/each}
-		</div>
-	</section>
-{/if}
-{/snippet}
-
 {#snippet favouritesBlock()}
 {#if favorites.length}
 	<section class="mb-10">
 		<h2 class="mb-3 flex items-center gap-2 text-lg font-semibold"><Icon name="star" class="text-accent size-5 fill-current" />Favourites</h2>
-		<div class="grid auto-rows-[minmax(9rem,auto)] grid-flow-dense grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3">
+		<div class="grid auto-rows-[minmax(9rem,auto)] grid-flow-dense grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3">
 			{#each favorites as device, i (device.id)}
 				<DeviceCard {device} {editing} first={i === 0} last={i === favorites.length - 1}
 					onnudge={(d) => layout.nudge(device.id, d, favorites.map((x) => x.id))}
@@ -170,7 +150,7 @@
 		</div>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
-			class="grid auto-rows-[minmax(9rem,auto)] grid-flow-dense grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3"
+			class="grid auto-rows-[minmax(9rem,auto)] grid-flow-dense grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3"
 			class:min-h-28={editing}
 			ondragover={(e) => editing && e.preventDefault()}
 			ondrop={(e) => {
@@ -230,8 +210,7 @@
 				<button class="btn btn-ghost btn-xs btn-square text-error" aria-label="Remove card" onclick={() => layout.removeWidget(i)}><Icon name="close" class="size-4" /></button>
 			</div>
 		{/if}
-		{#if w.type === 'status'}{@render statusBlock()}
-		{:else if w.type === 'favourites'}{@render favouritesBlock()}
+		{#if w.type === 'favourites'}{@render favouritesBlock()}
 		{:else if w.type === 'rooms'}{@render roomsBlock()}
 		{:else if w.type === 'flows'}{@render flowsBlock(w)}
 		{:else if w.type === 'sensor' && w.device_id && w.key}
@@ -244,7 +223,7 @@
 	<section class="bg-base-100 border-base-content/10 rounded-box mb-10 border p-4" aria-label="Add a card">
 		<h2 class="mb-3 font-semibold">Add a card</h2>
 		<div class="flex flex-wrap items-center gap-2">
-			{#each ['status', 'favourites', 'rooms'] as type (type)}
+			{#each ['favourites', 'rooms'] as type (type)}
 				<button class="btn btn-sm btn-soft" disabled={has(type as Widget['type'])} onclick={() => layout.addWidget({ type: type as Widget['type'] })}>
 					<Icon name="plus" class="size-4" />{WIDGET_NAMES[type as Widget['type']]}
 				</button>

@@ -2,6 +2,12 @@
 
 The Noodle hub follows [semantic versioning](https://semver.org). The version is `__version__` in `noodle/backend/noodle/__init__.py`; a release is a git tag `vX.Y.Z` with the same number (the release workflow checks it).
 
+## Unreleased
+
+- **Themes.** System › Appearance has a theme picker for the whole hub: Noodle (Noodle Light or Noodle Dark, following each device, as before), or Noodle Light, Noodle Dark, Dracula, Nord, Night, Dim, Sunset, Synthwave, Forest, Coffee, Emerald, Cupcake, Winter or Corporate (daisyUI's themes). Every open page and the app change at once; the choice is kept in `settings.yaml` (`appearance: theme: dracula`).
+- **Backups.** System › Backups downloads one file with everything (flows, settings, rooms, dashboard, history) and restores one with a preview of what changes. The hub also makes a backup every night at 03:00 and keeps the last 7, plus one before every restore, in `<data>/backups/`. A restore is applied on the next start, before anything opens the files, and the hub restarts itself (no Docker or systemd needed).
+- **Old things removed.** The "Set variable", "Check variable" and "Wait" steps are gone (use *Write to entity*, *Check state*, which can now also check that text *does not equal* a value, and *Timer*). The upgrades that rewrote flows from before the current formats, the old Thermostat integration settings, the `homepi.db` file name and the `HOMEPI_*` environment variables are no longer read. A hub that still has flows or settings in those old formats has to be upgraded with an earlier version first. The Hue switch bridge (`homepi/hook` and `hue-hooks.yaml`) is unchanged.
+
 ## 0.1.3
 
 - **A face for each kind of device.** Temperature/humidity sensors show both values large, lights get a brightness slider on their tile, buttons show the last press and can be pressed from the device sheet (a test press runs automations like a real one), motion sensors show motion or clear and since when. One `DeviceFace` component chooses, on tiles and in the sheet.

@@ -6,22 +6,25 @@ import asyncio
 import inspect
 import json
 import logging
+import os
 import re
+import sys
 import time
 import types
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from starlette.background import BackgroundTask
 from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import aicontext, config, flowfiles, integrations, mcp, notify, plugins, updates
+from . import aicontext, backup, config, flowfiles, integrations, mcp, notify, plugins, updates
 from .plugins import PressButton
 from .flows import FlowEngine
 from .discovery import Discovery
-from .migrations import adopt_hue_buttons, retire_thermostat
+from .migrations import adopt_hue_buttons
 from .hub import Hub
 from .store import Store
 from .yamlfile import YamlFile
@@ -29,6 +32,9 @@ from .yamlfile import YamlFile
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("noodle")
 
+# A restore the user confirmed is applied here, before anything opens the database or the files.
+if backup.apply_pending():
+    config.load()
 store = Store(config.db_path())
 hub = Hub(store)
 PLUGINS = plugins.discover()
@@ -42,7 +48,6 @@ for adapter in ADAPTERS.values():
         adapter.attach_flows(flows)
 discovery = Discovery(hub)
 adopt_hue_buttons(flows)
-retire_thermostat(flows)
 # Forwarded presses: Hue switch buttons, or else a phone notification button.
 zigbee.on_hook = lambda name: hue.press(name) or flows.webhook(name)
 
@@ -86,6 +91,8 @@ async def _apply_settings(changed: set[str]) -> None:
 async def _check_config() -> None:
     store.flush()
     if config.files_changed() and (changed := config.load()):
+        if "theme" in changed:
+            hub.broadcast({"type": "theme", "theme": config.theme()})
         await _apply_settings(changed)
     if store.reload_areas():
         hub.reapply_meta()
@@ -104,6 +111,18 @@ async def watch_config() -> None:
             log.exception("checking the config files failed")
 
 
+async def nightly_backups() -> None:
+    """One backup a night (03:00), the last few kept on the hub."""
+    while True:
+        await asyncio.sleep(backup.next_nightly())
+        try:
+            store.flush()
+            await asyncio.to_thread(backup.make, "nightly")
+        except Exception:
+            log.exception("the nightly backup failed")
+        await asyncio.sleep(60)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     hub.loop = asyncio.get_running_loop()
@@ -116,8 +135,10 @@ async def lifespan(_: FastAPI):
     else:
         log.warning("NOODLE_AUTOMATIONS=0: flows will not run")
     watcher = asyncio.create_task(watch_config())
+    nightly = asyncio.create_task(nightly_backups())
     yield
     watcher.cancel()
+    nightly.cancel()
     store.flush()
     flows.stop()
     for task in tasks.values():
@@ -162,7 +183,8 @@ _mark_existing_install_done()
 def auth_status(request: Request) -> dict:
     logged_in = bool(request.session.get("user"))
     return {"setup_needed": not store.has_password(), "logged_in": logged_in,
-            "wizard": logged_in and not config.SETUP_DONE}
+            "wizard": logged_in and not config.SETUP_DONE,
+            "theme": config.theme()}  # not secret: the login page uses it too
 
 
 @app.post("/api/setup/finish", dependencies=[Depends(require_login)])
@@ -434,8 +456,8 @@ def remove_area(name: str) -> list[str]:
 # --- dashboard layout ---------------------------------------------------
 
 # The cards the dashboard can show, in the order of dashboard.yaml. No `widgets` key means the default ones.
-WIDGET_TYPES = {"status", "favourites", "rooms", "flows", "sensor"}
-DEFAULT_WIDGETS = [{"type": "status"}, {"type": "favourites"}, {"type": "rooms"}]
+WIDGET_TYPES = {"favourites", "rooms", "flows", "sensor"}
+DEFAULT_WIDGETS = [{"type": "favourites"}, {"type": "rooms"}]
 DEVICE_GROUPS = {"room", "type", "source", "none"}
 # How a device's card is designed (see the frontend CardDesigner): a size in dashboard cells (w x h) and components
 # placed anywhere on the card's fine grid (4 columns per cell wide, 2 rows per cell high), each with its own x, y, w, h
@@ -859,6 +881,96 @@ async def update_install() -> dict:
     return {"ok": True}
 
 
+# --- backups ------------------------------------------------------------
+
+UPLOAD_LIMIT = 4 * 1024**3
+
+
+def _backup_error(err: Exception) -> HTTPException:
+    return HTTPException(400, str(err))
+
+
+@app.get("/api/backups", dependencies=[Depends(require_login)])
+def backups() -> dict:
+    return {"backups": backup.listing(), "current": backup.current(), "keep": backup.KEEP["nightly"],
+            "hour": backup.NIGHTLY_HOUR}
+
+
+@app.get("/api/backups/download", dependencies=[Depends(require_login)])
+async def backup_download() -> FileResponse:
+    """A fresh backup of everything, as a file to save."""
+    store.flush()
+    path = await asyncio.to_thread(backup.make_download)
+    return FileResponse(path, media_type="application/zip", filename=backup.download_name(),
+                        background=BackgroundTask(path.unlink, missing_ok=True))
+
+
+@app.get("/api/backups/{name}/file", dependencies=[Depends(require_login)])
+def backup_file(name: str) -> FileResponse:
+    try:
+        path = backup.path_of(name)
+    except backup.BackupError as err:
+        raise HTTPException(404, str(err))
+    return FileResponse(path, media_type="application/zip", filename=name)
+
+
+@app.get("/api/backups/{name}/preview", dependencies=[Depends(require_login)])
+async def backup_preview(name: str) -> dict:
+    try:
+        return {"name": name, **await asyncio.to_thread(backup.inspect, backup.path_of(name))}
+    except backup.BackupError as err:
+        raise _backup_error(err)
+
+
+@app.post("/api/backups/upload", dependencies=[Depends(require_login)])
+async def backup_upload(request: Request) -> dict:
+    """The raw zip as the request body. Checked straight away; the answer is the same as a preview."""
+    path = backup.upload_path()
+    size = 0
+    try:
+        with open(path, "wb") as f:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > UPLOAD_LIMIT:
+                    raise backup.BackupError("That file is too big to be a Noodle backup.")
+                f.write(chunk)
+        return {"name": path.name, **await asyncio.to_thread(backup.inspect, path)}
+    except backup.BackupError as err:
+        path.unlink(missing_ok=True)
+        raise _backup_error(err)
+
+
+class RestoreBody(BaseModel):
+    name: str
+
+
+@app.post("/api/backups/restore", dependencies=[Depends(require_login)])
+async def backup_restore(body: RestoreBody) -> dict:
+    """Back up the hub as it is, stage the chosen backup, and restart into it."""
+    try:
+        path = backup.path_of(body.name)
+        store.flush()
+        await asyncio.to_thread(backup.make, "before-restore")
+        await asyncio.to_thread(backup.stage, path)
+    except backup.BackupError as err:
+        raise _backup_error(err)
+    if "-upload-" in path.name:
+        path.unlink(missing_ok=True)
+    asyncio.get_running_loop().call_later(0.5, _restart)
+    return {"ok": True}
+
+
+def _restart() -> None:
+    """Start this same program again (the restore is applied on the way up). Works without Docker or systemd too."""
+    log.info("restarting to restore a backup")
+    try:
+        store.flush()
+        flows.stop()
+        store.db.close()
+    finally:
+        os.execv(sys.executable, [sys.executable, *sys.orig_argv[1:]])
+
+
 @app.get("/api/variables", dependencies=[Depends(require_login)])
 def variables() -> dict:
     return ADAPTERS["custom"].variables()
@@ -922,6 +1034,20 @@ def _describe(item: integrations.Integration) -> dict:
 @app.get("/api/integrations", dependencies=[Depends(require_login)])
 def list_integrations() -> list[dict]:
     return [_describe(i) for i in _integrations()]
+
+
+class ThemeBody(BaseModel):
+    theme: str  # one of config.THEMES, or "" for Noodle following each device
+
+
+@app.put("/api/theme", dependencies=[Depends(require_login)])
+def save_theme(body: ThemeBody) -> dict:
+    """The theme for the whole hub; every open page and the app change straight away."""
+    if body.theme and body.theme not in config.THEMES:
+        raise HTTPException(400, f"Unknown theme {body.theme!r}")
+    config.save({"theme": body.theme})
+    hub.broadcast({"type": "theme", "theme": config.theme()})
+    return {"theme": config.theme()}
 
 
 class SettingsBody(BaseModel):
@@ -1042,7 +1168,7 @@ async def add_found(integration_id: str, key: str, body: FoundBody | None = None
 
 # Each plugin brings its own endpoints (pairing, discovery, ...).
 _ctx = types.SimpleNamespace(
-    require_login=require_login, restart_adapter=restart_adapter,
+    require_login=require_login, restart_adapter=restart_adapter, discovery=discovery,
     describe=lambda integration_id: _describe(_integration(integration_id)))
 for _p in PLUGINS:
     if _router := _p.routes(ADAPTERS.get(_p.source), _ctx):
@@ -1082,7 +1208,7 @@ async def live(ws: WebSocket) -> None:
         _app_clients += 1
     await ws.send_json({"type": "snapshot", "devices": [d.as_dict() for d in hub.devices.values()],
                         "areas": store.areas(), "flow_issues": flows.file_issues,
-                        "home_name": config.HOME_NAME})
+                        "home_name": config.HOME_NAME, "theme": config.theme()})
 
     async def send(message: dict) -> None:
         await ws.send_json(message)

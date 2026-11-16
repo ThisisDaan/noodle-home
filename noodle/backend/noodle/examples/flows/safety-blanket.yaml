@@ -8,33 +8,41 @@ nodes:
   press:
     type: trigger.event
     device_id: matter:2
-    keys:
-      - button_3
-      - button_6
-      - button_9
-    action: long_press
+    outputs:
+      - button_3:long_press
+      - button_6:long_press
+      - button_9:long_press
   toggle:
     type: action.device
-    command: toggle
     device_id: matter:1
     key: switch_1
-  change: {type: trigger.state, device_id: matter:1, key: switch_1}
+    inputs:
+      - toggle
+  change:
+    type: trigger.state
+    device_id: matter:1
+    outputs:
+      - switch_1:on
+      - switch_1:off
   wait: {type: action.timer, minutes: 120}
   off:
     type: action.device
-    command: off
     device_id: matter:1
     key: switch_1
+    inputs:
+      - off
   tell:
     type: action.notify
     title: Blanket off
     message: The blanket was on for 2 hours and has been switched off.
     priority: default
 edges:
-  - {from: press, to: toggle}
-  - {from: change, out: on, to: wait, in: start}
-  - {from: change, out: off, to: wait, in: stop}
-  - {from: wait, to: off}
+  - {from: press, out: button_3:long_press, to: toggle, in: toggle}
+  - {from: press, out: button_6:long_press, to: toggle, in: toggle}
+  - {from: press, out: button_9:long_press, to: toggle, in: toggle}
+  - {from: change, out: switch_1:on, to: wait, in: start}
+  - {from: change, out: switch_1:off, to: wait, in: stop}
+  - {from: wait, to: off, in: off}
   - {from: off, to: tell}
 layout:
   press: [0, 0]

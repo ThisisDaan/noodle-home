@@ -12,10 +12,27 @@
 	import Wizard from '#lib/Wizard.svelte';
 	import { layout } from '#lib/layout.svelte.ts';
 	import { live } from '#lib/live.svelte.ts';
+	import { applyTheme } from '#lib/theme.ts';
 
 	let { children } = $props();
 
-	type Status = { setup_needed: boolean; logged_in: boolean; wizard?: boolean };
+	// On a phone the keyboard covers the field being typed in: bring it into view once the keyboard has opened.
+	$effect(() => {
+		const onFocus = (e: FocusEvent) => {
+			const el = e.target;
+			if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)
+				setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
+		};
+		document.addEventListener('focusin', onFocus);
+		return () => document.removeEventListener('focusin', onFocus);
+	});
+
+	// The hub's theme on every page. Until the hub has answered, the one app.html set from the last visit stays.
+	$effect(() => {
+		if (live.theme !== undefined) applyTheme(live.theme);
+	});
+
+	type Status = { setup_needed: boolean; logged_in: boolean; wizard?: boolean; theme?: unknown };
 	let status = $state<Status | null>(null);
 	let password = $state('');
 	let confirm = $state('');
@@ -33,6 +50,7 @@
 
 	async function refresh() {
 		status = await api<Status>('/auth/status');
+		live.setTheme(status.theme);
 		if (status.logged_in) {
 			live.start();
 			layout.load();

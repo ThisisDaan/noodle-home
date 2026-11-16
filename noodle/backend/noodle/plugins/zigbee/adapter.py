@@ -49,12 +49,21 @@ class ZigbeeAdapter:
         self.hub = hub
         self.base = config.Z2M_BASE_TOPIC
         self.client: aiomqtt.Client | None = None
+        self.error: str | None = None  # why the broker could not be reached, for the user
         self.friendly: dict[str, str] = {}  # device id -> friendly_name
         self.by_friendly: dict[str, str] = {}  # friendly_name -> device id
         self.bridge: dict = {"online": False, "permit_join": False, "version": None}
         # Called with a name for messages on noodle/hook/<name> (or the older homepi/hook/<name>) (e.g. Hue presses forwarded by Home Assistant).
         self.on_hook = None
         self.watchers: list = []  # called with each device that newly joins, while the user has a search open
+
+    def no_broker_message(self) -> str:
+        """What to tell the user when there is no MQTT connection (nothing is listening on the broker address)."""
+        reason = f" ({self.error})" if self.error else ""
+        return (f"Cannot reach an MQTT broker at {config.MQTT_HOST}:{config.MQTT_PORT}{reason}. Zigbee needs a Zigbee "
+                "USB stick, Zigbee2MQTT and an MQTT broker (such as Mosquitto) already running. If they run on "
+                "another machine, enter its address under Settings, Zigbee2MQTT. If you do not use Zigbee, you can "
+                "ignore this.")
 
     @staticmethod
     def _id(ieee: str) -> str:
@@ -67,6 +76,7 @@ class ZigbeeAdapter:
                 identifier = f"noodle-{socket.gethostname()}"
                 async with aiomqtt.Client(config.MQTT_HOST, config.MQTT_PORT, identifier=identifier) as client:
                     self.client = client
+                    self.error = None
                     await client.subscribe(f"{self.base}/#")
                     await client.subscribe("noodle/hook/#")
                     await client.subscribe("homepi/hook/#")  # the name older setups send to
@@ -77,6 +87,7 @@ class ZigbeeAdapter:
                         except Exception:
                             log.exception("bad message on %s", message.topic)
             except aiomqtt.MqttError as err:
+                self.error = str(err) or type(err).__name__
                 log.warning("MQTT connection lost (%s), retrying in 5s", err)
             finally:
                 self.client = None
@@ -280,7 +291,7 @@ class ZigbeeAdapter:
     async def command(self, device: Device, entity: Entity, on: bool | None, brightness: int | None, toggle: bool,
                       **extra) -> None:
         if not self.client:
-            raise RuntimeError("MQTT not connected")
+            raise RuntimeError(self.no_broker_message())
         payload: dict = {}
         if entity.kind in ("light", "switch", "fan"):
             if toggle:
@@ -318,7 +329,7 @@ class ZigbeeAdapter:
         """Let devices join for `seconds` and report each one that does. Zigbee2MQTT adds them itself, so they
         are reported as already added."""
         if not self.client:
-            raise RuntimeError("Not connected to the MQTT broker")
+            raise RuntimeError(self.no_broker_message())
         if not self.bridge.get("online"):
             raise RuntimeError("Zigbee2MQTT is offline")
 
@@ -338,5 +349,5 @@ class ZigbeeAdapter:
 
     async def permit_join(self, seconds: int) -> None:
         if not self.client:
-            raise RuntimeError("MQTT not connected")
+            raise RuntimeError(self.no_broker_message())
         await self.client.publish(f"{self.base}/bridge/request/permit_join", json.dumps({"time": seconds}))

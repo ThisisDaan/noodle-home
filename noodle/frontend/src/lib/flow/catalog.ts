@@ -58,18 +58,15 @@ export const CATALOG: NodeDef[] = [
 	{ type: 'cond.state', label: 'Check state', category: 'condition', defaults: {}, kinds: ['light', 'switch', 'binary_sensor', 'sensor'] },
 	{ type: 'cond.for', label: 'In state for…', category: 'condition', defaults: { state: 'on', minutes: 10 }, kinds: ['light', 'switch', 'binary_sensor', 'sensor'] },
 	{ type: 'cond.time', label: 'Between times', category: 'condition', defaults: { from: '22:00', to: '06:30' } },
-	{ type: 'cond.var', label: 'Check variable', category: 'condition', defaults: { name: 'status', op: 'eq', value: '' } },
 	{ type: 'action.device', label: 'Control device', category: 'action', defaults: { inputs: ['toggle'], brightness: 50, step: 5, min: 1, loop_levels: [25, 50, 75, 100], loop_seconds: 1, loop_max_seconds: 60 }, kinds: ['light', 'switch', 'fan', 'cover', 'lock', 'climate'] },
 	{ type: 'action.throttle', label: 'Only once per…', category: 'action', defaults: { minutes: 5 } },
 	{ type: 'action.http', label: 'Call web address', category: 'action', defaults: { url: 'https://', method: 'GET', body: '' } },
 	{ type: 'action.flow', label: 'Run another flow', category: 'action', defaults: { flow_id: '' } },
 	{ type: 'action.cycle', label: 'Cycle', category: 'action', defaults: { inputs: ['next', 'back', 'loop'], steps: [{ brightness: 25 }, { brightness: 50 }, { brightness: 75 }, { brightness: 100 }] } },
 	{ type: 'action.repeat', label: 'Repeat', category: 'action', defaults: { seconds: 0.5, max_seconds: 30 } },
-	{ type: 'action.delay', label: 'Wait', category: 'action', defaults: { seconds: 5 }, available: false }, // old flows only: use Timer
 	{ type: 'action.timer', label: 'Timer', category: 'action', defaults: { minutes: 5, restart: true } },
 	{ type: 'action.log', label: 'Log message', category: 'action', defaults: { message: 'Something happened' } },
-	{ type: 'action.write', label: 'Write to entity', category: 'action', defaults: { device_id: '', key: '', value: '' } },
-	{ type: 'action.var', label: 'Set variable (old)', category: 'action', defaults: { name: 'status', value: '' }, available: false }
+	{ type: 'action.write', label: 'Write to entity', category: 'action', defaults: { device_id: '', key: '', value: '' } }
 ];
 
 export const DEFS: Record<string, NodeDef> = Object.fromEntries(CATALOG.map((d) => [d.type, d]));
@@ -108,14 +105,11 @@ export const NODE_ICON: Record<string, string> = {
 	'cond.state': 'branch',
 	'cond.for': 'timer',
 	'cond.time': 'clock',
-	'cond.var': 'variable',
 	'action.device': 'bulb',
 	'action.cycle': 'branch',
 	'action.repeat': 'timer',
-	'action.delay': 'pause',
 	'action.timer': 'timer',
 	'action.log': 'note',
-	'action.var': 'variable',
 	'action.write': 'variable'
 };
 
@@ -312,7 +306,8 @@ function activeOutput(type: string, id: string, d: Record<string, any>, devices:
 	if (typeof state === 'boolean') return state ? 'on' : 'off';
 	if (type === 'cond.state' && d.op && state != null) {
 		const v = Number(state), want = Number(d.value);
-		const yes = d.op === 'gt' ? v > want : d.op === 'lt' ? v < want : String(state) === String(d.value);
+		const same = String(state) === String(d.value);
+		const yes = d.op === 'gt' ? v > want : d.op === 'lt' ? v < want : d.op === 'neq' ? !same : same;
 		return yes ? 'yes' : 'no';
 	}
 	return null;
@@ -321,7 +316,7 @@ function activeOutput(type: string, id: string, d: Record<string, any>, devices:
 /** Sensors and number entities are compared with > < =; everything else is simply on or off. */
 export const isNumeric = (e?: { kind: string }) => e?.kind === 'sensor' || e?.kind === 'number';
 
-const OPS: Record<string, string> = { on: 'is on', off: 'is off', eq: '=', gt: '>', lt: '<' };
+const OPS: Record<string, string> = { on: 'is on', off: 'is off', eq: '=', neq: '≠', gt: '>', lt: '<' };
 
 /** One-line description shown inside a node. */
 export function summary(type: string, d: Record<string, any>, devices: Record<string, Device>): string {
@@ -368,18 +363,12 @@ export function summary(type: string, d: Record<string, any>, devices: Record<st
 			return (d.steps ?? []).map((s: unknown) => JSON.stringify(s)).join(' → ');
 		case 'action.repeat':
 			return `every ${d.seconds}s until stopped`;
-		case 'action.delay':
-			return `${d.seconds}s`;
 		case 'action.timer':
 			return `wait ${d.minutes} min, then continue`;
 		case 'action.log':
 			return String(d.message ?? '');
-		case 'action.var':
-			return `${d.name} = ${d.value}`;
 		case 'action.write':
 			return d.device_id && d.key ? `${devices[d.device_id]?.name ?? d.device_id} · ${devices[d.device_id]?.entities.find((e) => e.key === d.key)?.name ?? d.key} = ${d.value === '' ? '(empty)' : d.value}` : 'pick a custom device';
-		case 'cond.var':
-			return `${d.name} ${d.op === 'eq' ? '=' : '≠'} ${d.value || '(empty)'}`;
 		case 'trigger.webhook':
 			return `Phone button "${d.name}" is tapped`;
 	}

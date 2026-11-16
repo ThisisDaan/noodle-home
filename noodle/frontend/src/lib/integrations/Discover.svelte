@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { fly, scale } from 'svelte/transition';
 	import Icon from '../Icon.svelte';
 	import { api, ApiError } from '../api.ts';
@@ -6,9 +7,10 @@
 	import type { Found, Integration, SearchState } from './types.ts';
 
 	/** The one screen for adding devices, the same for every integration that can search (IntegrationForm shows it).
-	 * Nothing searches until the button is pressed, then for half a minute; the server pushes what it finds (nothing
-	 * is polled). Things that need a button pressed (Philips Hue) get the same "press the button" step, and things that
-	 * first have to join the Wi-Fi (a new Shelly) ask for the network and its password, which are never stored. */
+	 * The search starts when this screen opens (not for Zigbee pairing, which waits for the button) and runs half a
+	 * minute; the server pushes what it finds (nothing is polled). Things that need a button pressed (Philips Hue) get
+	 * the same "press the button" step, and things that first have to join the Wi-Fi (a new Shelly) ask for the network
+	 * and its password, which are never stored. */
 	let { item, onchange }: { item: Integration; onchange: (updated: Integration) => void } = $props();
 	const id = $derived(item.id);
 	const noun = $derived(item.noun ?? 'devices');
@@ -52,6 +54,10 @@
 	}
 	const start = () => run(() => api(`/integrations/${id}/search`, { body: {} }), 'search');
 	const stop = () => run(() => api(`/integrations/${id}/search`, { method: 'DELETE' }), 'stop');
+	// Opening the screen starts the search (it is what the user came for), unless one already ran or runs. Never in the background.
+	onMount(() => {
+		if (item.auto_search !== false && !searching && !search?.total) start();
+	});
 	const url = (key: string) => `/integrations/${id}/found/${encodeURIComponent(key)}/add`;
 
 	// Adding may need a button pressed on the device: the server answers 409 until it was, so ask again each second.
@@ -154,7 +160,7 @@
 				<p class="text-sm opacity-70">Check that the {noun} are switched on and on this network, then search again.</p>
 			{:else}
 				<p class="font-medium">Add {noun}</p>
-				<p class="text-sm opacity-70">Search runs for 30 seconds, only when you press the button.</p>
+				<p class="text-sm opacity-70">Press Search to look for {noun}.</p>
 			{/if}
 		</div>
 		{#if searching}

@@ -104,6 +104,7 @@ class Plugin:
     # devices join by themselves) or "hub" (exactly one connection, like a DIRIGERA hub; set up once).
     search_finds: str = "devices"
     noun: str = "devices"  # what a search looks for, for the interface: "bulbs", "sensors", ...
+    auto_search: bool = True  # the search starts when its screen opens; False where searching changes something (Zigbee pairing opens the network)
     search_hint: str = ""  # shown while searching: what to do on the device (put it in pairing mode, ...)
     press_hint: str = ""  # shown while waiting for the button, when add_found raises PressButton
     restart_after_add: bool = False  # add_found changed settings, so the adapter reconnects

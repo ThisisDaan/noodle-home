@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api } from '#lib/api.ts';
 	import IntegrationForm from '#lib/integrations/IntegrationForm.svelte';
+	import ThemePicker from '#lib/ThemePicker.svelte';
 	import type { Integration } from '#lib/integrations/types.ts';
 	import { live } from '#lib/live.svelte.ts';
 
@@ -50,7 +51,7 @@
 	// The hub restarts into the new version; when the live connection comes back, load the new interface.
 	let wasDown = false;
 	$effect(() => {
-		if (!restarting) return;
+		if (!restarting && !restoring) return;
 		if (!live.connected) wasDown = true;
 		else if (wasDown) location.reload();
 	});
@@ -77,6 +78,67 @@
 	$effect(() => {
 		api<{ days: number }>('/settings/history').then((s) => (historyDays = s.days));
 	});
+
+	// Backups: download one, the ones the hub keeps (nightly, before a restore), and restoring with a preview first.
+	type Counts = { noodle: string | null; flows: number; areas: number; devices: number; history: number };
+	type BackupItem = Counts & { name: string; size: number; created: number | null; kind: string; label: string };
+	type Preview = Counts & { name: string; created: number | null; kind: string | null; newer: boolean };
+	let backups = $state<{ backups: BackupItem[]; current: Counts; keep: number; hour: number } | null>(null);
+	let preview = $state<Preview | null>(null);
+	let backupBusy = $state('');
+	let restoring = $state(false);
+	let restoreDialog = $state<HTMLDialogElement>();
+	let fileInput = $state<HTMLInputElement>();
+
+	const loadBackups = () => api<typeof backups>('/backups').then((b) => (backups = b)).catch(() => {});
+	$effect(() => {
+		loadBackups();
+	});
+
+	const when = (ts: number | null) => (ts ? new Date(ts * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '–');
+	const megabytes = (bytes: number) => (bytes < 1024 * 1024 ? '< 1 MB' : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
+
+	async function openPreview(load: () => Promise<Preview>) {
+		backupBusy = 'Checking the backup…';
+		error = '';
+		try {
+			preview = await load();
+			restoreDialog?.showModal();
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		} finally {
+			backupBusy = '';
+		}
+	}
+
+	const previewKept = (name: string) => openPreview(() => api<Preview>(`/backups/${encodeURIComponent(name)}/preview`));
+
+	function previewFile(e: Event & { currentTarget: HTMLInputElement }) {
+		const file = e.currentTarget.files?.[0];
+		e.currentTarget.value = '';
+		if (!file) return;
+		openPreview(async () => {
+			const res = await fetch('/api/backups/upload', { method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: file });
+			const data = await res.json().catch(() => ({ detail: res.statusText }));
+			if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'The upload failed.');
+			return data as Preview;
+		});
+	}
+
+	async function restore() {
+		if (!preview) return;
+		backupBusy = 'Restoring…';
+		try {
+			await api('/backups/restore', { body: { name: preview.name } });
+			restoreDialog?.close();
+			restoring = true;
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+			restoreDialog?.close();
+		} finally {
+			backupBusy = '';
+		}
+	}
 
 	async function setHistory(days: number) {
 		historyDays = (await api<{ days: number }>('/settings/history', { method: 'PUT', body: { days } })).days;
@@ -128,6 +190,13 @@
 
 <div class="card bg-base-100 mb-4 shadow-sm">
 	<div class="card-body gap-2 p-4">
+		<h2 class="card-title text-base">Appearance</h2>
+		<ThemePicker />
+	</div>
+</div>
+
+<div class="card bg-base-100 mb-4 shadow-sm">
+	<div class="card-body gap-2 p-4">
 		<h2 class="card-title text-base">
 			<span class="status" class:status-success={!!phones} class:status-neutral={!phones}></span>
 			Phone notifications
@@ -150,6 +219,76 @@
 		</div>
 	</div>
 {/if}
+
+<div class="card bg-base-100 mb-4 shadow-sm">
+	<div class="card-body gap-2 p-4">
+		<h2 class="card-title text-base">Backups</h2>
+		{#if restoring}
+			<p class="text-sm"><span class="loading loading-dots loading-sm"></span> Restoring… this page reloads when Noodle is back.</p>
+		{:else}
+			<p class="text-sm opacity-70">
+				One file with everything: flows, settings, rooms, dashboard and history.
+				{#if backups}A backup is also made every night at {String(backups.hour).padStart(2, '0')}:00; the last {backups.keep} are kept on this hub.{/if}
+			</p>
+			<div class="flex flex-wrap gap-2">
+				<a class="btn btn-primary btn-sm" href="/api/backups/download" download>Download backup</a>
+				<button class="btn btn-sm" onclick={() => fileInput?.click()} disabled={!!backupBusy}>{backupBusy || 'Restore from file…'}</button>
+				<input bind:this={fileInput} type="file" accept=".zip,application/zip" class="hidden" onchange={previewFile} />
+			</div>
+			<p class="text-xs opacity-60">The file holds your keys and the login password (hashed). Keep it somewhere safe, not on the Pi only.</p>
+			{#if backups?.backups.length}
+				<ul class="divide-base-300 mt-1 divide-y text-sm">
+					{#each backups.backups as b (b.name)}
+						<li class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+							<span class="min-w-0 flex-1">
+								<span class="font-medium">{when(b.created)}</span>
+								<span class="badge badge-ghost badge-sm ms-1">{b.label}</span>
+								<span class="block text-xs opacity-60">{b.flows} flows · {b.devices} devices · {megabytes(b.size)}</span>
+							</span>
+							<a class="btn btn-ghost btn-xs" href={`/api/backups/${encodeURIComponent(b.name)}/file`} download>Download</a>
+							<button class="btn btn-ghost btn-xs" onclick={() => previewKept(b.name)} disabled={!!backupBusy}>Restore…</button>
+						</li>
+					{/each}
+				</ul>
+			{:else if backups}
+				<p class="text-xs opacity-60">No backups kept on this hub yet. The first one is made tonight.</p>
+			{/if}
+		{/if}
+	</div>
+</div>
+
+<dialog class="modal modal-bottom sm:modal-middle" bind:this={restoreDialog}>
+	{#if preview && backups}
+		<div class="modal-box">
+			<h3 class="text-lg font-bold">Restore this backup?</h3>
+			{#if preview.newer}
+				<div role="alert" class="alert alert-warning alert-soft mt-3 text-sm">
+					This backup was made by a newer Noodle ({preview.noodle}). Update this hub first, or some things may not work.
+				</div>
+			{/if}
+			<table class="table-sm mt-3 table">
+				<thead><tr><th></th><th>Backup</th><th>This hub now</th></tr></thead>
+				<tbody>
+					<tr><td>Made</td><td>{when(preview.created)}</td><td>–</td></tr>
+					<tr><td>Noodle</td><td>{preview.noodle ?? '–'}</td><td>{backups.current.noodle}</td></tr>
+					<tr><td>Flows</td><td>{preview.flows}</td><td>{backups.current.flows}</td></tr>
+					<tr><td>Named devices</td><td>{preview.devices}</td><td>{backups.current.devices}</td></tr>
+					<tr><td>Rooms</td><td>{preview.areas}</td><td>{backups.current.areas}</td></tr>
+					<tr><td>History entries</td><td>{preview.history.toLocaleString()}</td><td>{backups.current.history.toLocaleString()}</td></tr>
+				</tbody>
+			</table>
+			<p class="mt-3 text-sm">
+				Everything on this hub is replaced by the backup, including the login password. A backup of how it is now is
+				made first (listed as “Before restore”). Noodle restarts for a few seconds; you may have to log in again.
+			</p>
+			<div class="modal-action">
+				<form method="dialog"><button class="btn btn-ghost">Cancel</button></form>
+				<button class="btn btn-primary" onclick={restore} disabled={!!backupBusy}>{backupBusy || 'Restore and restart'}</button>
+			</div>
+		</div>
+	{/if}
+	<form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
 
 <div class="card bg-base-100 mb-6 shadow-sm">
 	<div class="card-body gap-2 p-4">

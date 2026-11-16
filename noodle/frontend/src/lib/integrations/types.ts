@@ -19,6 +19,8 @@ export type Found = {
 	stages?: number;
 	/** Why adding it did not work (shown on the row itself). */
 	failed?: string | null;
+	host?: string;
+	port?: number;
 };
 /** A search for new devices: it runs only when the user starts it, and the server pushes what it finds. */
 export type SearchState = {
@@ -63,6 +65,8 @@ export type Integration = {
 	searchable?: boolean;
 	/** What a search looks for ("Hue bridges"), what to do on the device meanwhile, and the button to press. */
 	noun?: string;
+	/** The search starts when its screen opens (false for Zigbee pairing, which opens the network). */
+	auto_search?: boolean;
 	search_hint?: string;
 	press_hint?: string;
 	search?: SearchState;

@@ -81,33 +81,30 @@ def test_the_device_can_be_switched_and_set_like_any_other(adapter):
     assert adapter.hub.devices[f"custom:{did}"].entities["target"].state == 19.0
 
 
-def test_old_variables_move_into_the_variables_device_and_nothing_is_lost(tmp_path):
-    store = Store(tmp_path / "old.db")
-    store.set_var("washer.status", "Running")  # the shape a hub from before custom devices has
-    store.set_var("post", "waiting")
-    adapter = CustomAdapter(Hub(store))
-    assert adapter.get_variable("washer.status") == "Running" and adapter.get_variable("post") == "waiting"
-    assert set(adapter.variables()) == {"washer.status", "post"}
-    assert store.get_var("post") == "waiting"  # the old table is untouched, so rolling back loses nothing
-    # safe to run again: no duplicates, and a newer value is not overwritten by the old one
-    adapter.set_variable("post", "collected")
-    adapter._migrate_variables()
-    again = CustomAdapter(Hub(store))
-    again._migrate_variables()
-    assert [f["key"] for f in again.devices["variables"]["fields"]].count("post") == 1
-    assert again.get_variable("post") == "collected"
-
-
-def test_the_variables_device_is_built_in_and_creates_fields_when_a_flow_uses_a_new_name(adapter):
+def test_the_variables_device_is_built_in_and_cannot_be_deleted(adapter):
     assert adapter.variables() == {}
-    adapter.set_variable("status", "Heating")
+    adapter.devices["variables"] = {"id": "variables", "name": "Variables", "fields": [{"key": "status", "label": "status", "type": "text"}]}
+    adapter.write("variables", "status", "Heating")
     assert adapter.hub.devices["custom:variables"].entities["status"].state == "Heating"
+    assert adapter.variables()["status"]["value"] == "Heating"
     assert adapter.listing()[0]["builtin"] is True
     with pytest.raises(ValueError):
         adapter.delete("variables")
 
 
-def test_flow_steps_write_to_entities_and_variables():
+def test_check_state_compares_text_both_ways():
+    from noodle import main
+    adapter = main.ADAPTERS["custom"]
+    did = adapter.save("Washer", [{"label": "Status", "type": "text"}])["id"]
+    adapter.write(did, "status", "running")
+    base = {"device_id": f"custom:{did}", "key": "status", "value": "running"}
+    assert main.flows._check("cond.state", {**base, "op": "eq"}) is True
+    assert main.flows._check("cond.state", {**base, "op": "neq"}) is False
+    assert main.flows._check("cond.state", {**base, "op": "neq", "value": "idle"}) is True
+    adapter.delete(did)
+
+
+def test_flow_steps_write_to_entities():
     from noodle import main
     adapter = main.ADAPTERS["custom"]
     did = adapter.save("Flow test device", FIELDS)["id"]
@@ -115,10 +112,6 @@ def test_flow_steps_write_to_entities_and_variables():
     write = {"id": "w", "type": "action.write", "data": {"device_id": f"custom:{did}", "key": "status", "value": "Heating"}}
     asyncio.run(main.flows._step(flow, write, {}, [0]))
     assert main.hub.devices[f"custom:{did}"].entities["status"].state == "Heating"
-    var = {"id": "v", "type": "action.var", "data": {"name": "flow-test-var", "value": "yes"}}
-    asyncio.run(main.flows._step(flow, var, {}, [0]))
-    assert adapter.get_variable("flow-test-var") == "yes"
-    assert main.flows._check("cond.var", {"name": "flow-test-var", "op": "eq", "value": "yes"}) is True
     elsewhere = {"id": "x", "type": "action.write", "data": {"device_id": "zigbee:nope", "key": "k", "value": "1"}}
     with pytest.raises(LookupError):
         asyncio.run(main.flows._step(flow, elsewhere, {}, [0]))

@@ -44,7 +44,7 @@ def describe(item: Integration, plugin=None, adapter=None) -> dict:
         "id": item.id, "name": item.name, "help": item.help, "connected": _status(item), "icon": item.icon, "panel": item.panel,
         "support": item.support, "search_finds": plugin.search_finds if plugin else "devices",
         "can_add": bool(plugin and plugin.search_finds == "devices" and (plugin.searchable or plugin.manual_add)), "add_text": plugin.add_text if plugin else "",
-        **({"noun": plugin.noun, "search_hint": plugin.search_hint, "press_hint": plugin.press_hint}
+        **({"noun": plugin.noun, "auto_search": plugin.auto_search, "search_hint": plugin.search_hint, "press_hint": plugin.press_hint}
            if plugin and plugin.searchable else {}),
         **_details(plugin, adapter),
         "added": item.always or item.id in added_ids(), "always": item.always,

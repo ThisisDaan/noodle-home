@@ -27,15 +27,11 @@ of nodes that have more than one):
   (action.device also has a "message" input: msg.payload {brightness} / {on} / {toggle} is applied to the device,
    and for other kinds {color_temp} (kelvin), {color: {h, s}}, {position}, {action}, {mode}, {value}; see capabilities.py)
   action.device     "open" / "close" / "stop" for covers and "lock" / "unlock" for locks are inputs too
-  action.delay      wait N seconds (old flows; use action.timer, which survives a restart)
   action.timer     countdown with two inputs: "start" and "stop"; continues when it runs out
                     data: minutes, restart (true: a new start begins again; false: keep the running one)
   action.log        write a line to the flow log
   (action.notify and action.speak are added by plugins, see plugins/notifications/ and plugins/speak/;
    integrations can add more nodes with Plugin.nodes())
-  action.var        set a variable               data: name, value
-  cond.var          variable equals / differs    data: name, op ("eq"|"neq"), value (variables are the text fields
-                    of the built-in "Variables" device)
   trigger.webhook   POST /api/hook/<token>/<name> (e.g. from a notification button)  data: name
   trigger.sun       at sunrise or sunset          data: event ("sunrise"|"sunset"), offset (minutes, - = before)
   trigger.manual    the Run button of the flow (and the "Run flow" action of other flows)
@@ -185,136 +181,9 @@ class FlowEngine:
             flow = dict(row)
             flow["graph"] = json.loads(flow["graph"])
             flow["enabled"] = bool(flow["enabled"])
-            if (self._migrate_state_triggers(flow["graph"]) | self._migrate_state_checks(flow["graph"])
-                    | self._migrate_device_inputs(flow["graph"]) | self._migrate_state_outputs(flow["graph"])
-                    | self._migrate_event_outputs(flow["graph"])):
-                self._save(flow)
             self.flows[flow["id"]] = flow
         for row in self.store.db.execute("SELECT * FROM flow_timers").fetchall():
             self.timers[(row["flow_id"], row["name"])] = {"deadline": row["deadline"], "msg": json.loads(row["msg"])}
-
-    @staticmethod
-    def _migrate_state_triggers(graph: dict) -> bool:
-        """State triggers used to have one output and a `to` setting; they now have an "on" and an "off"
-        output. Move the old connections over so existing flows behave the same."""
-        edges, changed = graph.get("edges", []), False
-        for node in graph.get("nodes", []):
-            d = node.get("data", {})
-            if node.get("type") != "trigger.state" or "to" not in d:
-                continue
-            to = d.pop("to")
-            changed = True
-            for e in [e for e in edges if e.get("source") == node["id"] and (e.get("sourceHandle") or "out") == "out"]:
-                for handle in ({"on": ["on"], "off": ["off"]}.get(to, ["on", "off"])):
-                    edges.append({"id": f"{node['id']}-{handle}-{e['target']}", "source": node["id"],
-                                  "sourceHandle": handle, "target": e["target"]})
-                if to in ("on", "off"):
-                    edges.remove(e)
-        return changed
-
-    @staticmethod
-    def _migrate_state_checks(graph: dict) -> bool:
-        """State checks for on/off used a dropdown and "yes" / "no" outputs; they now have "on" and "off"
-        outputs. Numeric checks (>, <, =) keep yes / no."""
-        changed = False
-        for node in graph.get("nodes", []):
-            d = node.get("data", {})
-            if node.get("type") != "cond.state" or d.get("op") not in ("on", "off"):
-                continue
-            wants_on = d.pop("op") == "on"
-            changed = True
-            for e in graph.get("edges", []):
-                if e.get("source") == node["id"] and e.get("sourceHandle") in ("yes", "no"):
-                    yes = e["sourceHandle"] == "yes"
-                    e["sourceHandle"] = "on" if yes == wants_on else "off"
-                    e["id"] = f"{node['id']}-{e['sourceHandle']}-{e['target']}"
-        return changed
-
-    @staticmethod
-    def _migrate_device_inputs(graph: dict) -> bool:
-        """Control device used to do one thing, picked from a dropdown ("command"); it now has an input per
-        action. Turn the old setting into a single input and connect the existing lines to it."""
-        changed = False
-        for node in graph.get("nodes", []):
-            d = node.get("data", {})
-            if node.get("type") != "action.device" or d.get("inputs"):
-                continue
-            command = d.pop("command", None) or "toggle"
-            d["inputs"] = [command]
-            for e in graph.get("edges", []):
-                if e.get("target") == node["id"]:
-                    e["targetHandle"] = command
-                    e["id"] = f"{e['source']}-{e.get('sourceHandle') or 'out'}-{node['id']}-{command}"
-            changed = True
-        return changed
-
-    @staticmethod
-    def _migrate_state_outputs(graph: dict) -> bool:
-        """Device changes used to watch one entity, picked from a dropdown ("key"), with "on" / "off" / "out"
-        outputs; it now has a tick box per change of any of the device's entities, e.g. "occupancy:on"."""
-        changed = False
-        for node in graph.get("nodes", []):
-            d = node.get("data", {})
-            if node.get("type") != "trigger.state" or "outputs" in d:
-                continue
-            key = d.pop("key", None) or ""
-            used = []
-            for e in graph.get("edges", []):
-                if e.get("source") == node["id"]:
-                    e["sourceHandle"] = f"{key}:{e.get('sourceHandle') or 'out'}"
-                    e["id"] = f"{node['id']}-{e['sourceHandle']}-{e['target']}" + (
-                        f"-{e['targetHandle']}" if e.get("targetHandle") else "")
-                    used.append(e["sourceHandle"])
-            # Not connected yet: offer every kind; the editor only shows the ones the entity can do.
-            d["outputs"] = [h for h in (f"{key}:on", f"{key}:off", f"{key}:out") if h in used or not used]
-            changed = True
-        return changed
-
-    @staticmethod
-    def _migrate_event_outputs(graph: dict) -> bool:
-        """Button pressed used to have one output, buttons ticked in "keys" and a press type from a dropdown;
-        it now has an output per ticked button press ("action:single"). Several of these nodes on the same
-        device in one flow (one per press type) become one node with all their outputs."""
-        nodes, edges, changed = graph.get("nodes", []), graph.get("edges", []), False
-        for node in nodes:
-            d = node.get("data", {})
-            if node.get("type") != "trigger.event" or "outputs" in d:
-                continue
-            keys = d.pop("keys", None) or ([d["key"]] if d.get("key") else [])
-            d.pop("key", None)
-            press = d.pop("action", "") or "*"
-            d["outputs"] = [f"{k}:{press}" for k in keys]
-            for e in [e for e in edges if e.get("source") == node["id"]]:
-                edges.remove(e)
-                for out in d["outputs"]:
-                    edges.append({**e, "sourceHandle": out, "id": f"{node['id']}-{out}-{e['target']}" + (
-                        f"-{e['targetHandle']}" if e.get("targetHandle") else "")})
-            changed = True
-        if changed:
-            first: dict[str, dict] = {}
-            for node in list(nodes):
-                d = node.get("data", {})
-                if node.get("type") != "trigger.event" or not d.get("device_id"):
-                    continue
-                keep = first.setdefault(d["device_id"], node)
-                if keep is node:
-                    continue
-                keep["data"]["outputs"] += [o for o in d["outputs"] if o not in keep["data"]["outputs"]]
-                nodes.remove(node)
-                for e in edges:
-                    if e.get("source") == node["id"]:
-                        e["source"] = keep["id"]
-                        e["id"] = f"{keep['id']}-{e['sourceHandle']}-{e['target']}" + (
-                            f"-{e['targetHandle']}" if e.get("targetHandle") else "")
-            # Merged nodes may now have the same connection twice.
-            seen, unique = set(), []
-            for e in edges:
-                ident = (e.get("source"), e.get("sourceHandle"), e.get("target"), e.get("targetHandle"))
-                if ident not in seen:
-                    seen.add(ident)
-                    unique.append(e)
-            edges[:] = unique
-        return changed
 
     def _save(self, flow: dict) -> None:
         self.store.db.execute(
@@ -422,9 +291,6 @@ class FlowEngine:
 
     def create(self, name: str, graph: dict | None = None, enabled: bool = False, flow_id: str | None = None) -> dict:
         graph = graph or {"nodes": [], "edges": []}
-        self._migrate_device_inputs(graph)
-        self._migrate_state_outputs(graph)
-        self._migrate_event_outputs(graph)
         flow = {"id": flow_id or uuid.uuid4().hex[:12], "name": name, "enabled": enabled,
                 "graph": graph, "last_run": None, "last_error": None,
                 "updated": time.time()}
@@ -438,9 +304,6 @@ class FlowEngine:
         if name is not None:
             flow["name"] = name
         if graph is not None:
-            self._migrate_device_inputs(graph)  # an editor tab opened before an upgrade still sends old nodes
-            self._migrate_state_outputs(graph)
-            self._migrate_event_outputs(graph)
             flow["graph"] = graph
             for ident in [k for k in self._zone if k[0] == flow_id]:
                 del self._zone[ident]  # the target may have changed: decide again from the current reading
@@ -685,9 +548,6 @@ class FlowEngine:
         elif kind.startswith("cond."):
             handle = "yes" if self._check(kind, d) else "no"
             await self._follow(flow, node, msg, handle, steps)
-        elif kind == "action.delay":
-            await asyncio.sleep(max(0.0, float(d.get("seconds") or 0)))
-            await self._follow(flow, node, msg, "out", steps)
         elif kind == "action.timer":
             if inp == "stop":
                 if self._stop_timer(flow["id"], node["id"]):
@@ -696,11 +556,6 @@ class FlowEngine:
                 self._start_timer(flow["id"], node, msg)  # the clock continues from this node when it runs out
         elif kind == "action.log":
             self.add_log(flow["id"], _fill(d.get("message"), msg))
-            await self._follow(flow, node, msg, "out", steps)
-        elif kind == "action.var":  # a variable is a text field of the built-in Variables device
-            name, value = str(d.get("name") or ""), _fill(d.get("value"), msg)
-            self.hub.adapters["custom"].set_variable(name, value)
-            self.add_log(flow["id"], f"{name} = {value}")
             await self._follow(flow, node, msg, "out", steps)
         elif kind == "action.write":
             value = _fill(d.get("value"), msg)
@@ -747,8 +602,8 @@ class FlowEngine:
             elif key not in self._repeats:
                 self._repeats[key] = asyncio.create_task(self._repeat(flow, node, msg))
         elif kind == "action.device":
-            # The input the message came in on is the action; old single-input nodes still have "command".
-            command = inp if inp != "in" else d.get("command") or (d.get("inputs") or ["toggle"])[0]
+            # The input the message came in on is the action.
+            command = inp if inp != "in" else (d.get("inputs") or ["toggle"])[0]
             if command in ("loop_start", "loop_stop"):
                 self._brightness_loop(flow, node, command)
             else:
@@ -761,9 +616,6 @@ class FlowEngine:
         return (device, entity) if entity else (None, None)
 
     def _check(self, kind: str, d: dict) -> bool:
-        if kind == "cond.var":
-            same = (self.hub.adapters["custom"].get_variable(str(d.get("name") or "")) or "") == str(d.get("value") or "")
-            return same if d.get("op", "eq") == "eq" else not same
         if kind == "cond.day":
             return datetime.now().weekday() in (d.get("days") or [])
         if kind == "cond.dark":
@@ -797,6 +649,9 @@ class FlowEngine:
             return entity.state is True
         if op == "off":
             return entity.state is False
+        if op in ("eq", "neq"):
+            same = ("" if entity.state is None else str(entity.state)) == str(value if value is not None else "")
+            return same if op == "eq" else not same
         try:
             if op == "gt":
                 return float(entity.state) > float(value)

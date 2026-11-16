@@ -5,19 +5,29 @@ id: safety-heater
 name: Heater
 enabled: false
 nodes:
-  change: {type: trigger.state, device_id: zigbee:0x00158d0000000001, key: switch}
+  change:
+    type: trigger.state
+    device_id: zigbee:0x00158d0000000001
+    outputs:
+      - switch:on
+      - switch:off
   wait: {type: action.timer, minutes: 300}
   off:
     type: action.device
-    command: off
     device_id: zigbee:0x00158d0000000001
     key: switch
+    inputs:
+      - off
   tell:
     type: action.notify
     title: Heating off
     message: The heater was on for 5 hours straight and has been switched off.
     priority: high
-  power: {type: trigger.state, device_id: zigbee:0x00158d0000000001, key: power}
+  power:
+    type: trigger.state
+    device_id: zigbee:0x00158d0000000001
+    outputs:
+      - power:out
   over:
     type: cond.state
     op: gt
@@ -27,23 +37,24 @@ nodes:
   wait2: {type: action.timer, minutes: 2, restart: false}
   off2:
     type: action.device
-    command: off
     device_id: zigbee:0x00158d0000000001
     key: switch
+    inputs:
+      - off
   tell2:
     type: action.notify
     title: Heating off
     message: The plug drew more than 2600 W. The heater has been switched off.
     priority: urgent
 edges:
-  - {from: change, out: on, to: wait, in: start}
-  - {from: change, out: off, to: wait, in: stop}
-  - {from: wait, to: off}
+  - {from: change, out: switch:on, to: wait, in: start}
+  - {from: change, out: switch:off, to: wait, in: stop}
+  - {from: wait, to: off, in: off}
   - {from: off, to: tell}
-  - {from: power, to: over}
+  - {from: power, out: power:out, to: over}
   - {from: over, out: yes, to: wait2, in: start}
   - {from: over, out: no, to: wait2, in: stop}
-  - {from: wait2, to: off2}
+  - {from: wait2, to: off2, in: off}
   - {from: off2, to: tell2}
 layout:
   change: [0, 0]
