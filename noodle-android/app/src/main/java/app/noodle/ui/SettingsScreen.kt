@@ -31,7 +31,7 @@ import app.noodle.NoodleViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: NoodleViewModel, back: () -> Unit) {
+fun SettingsScreen(vm: NoodleViewModel, setupShelly: () -> Unit, back: () -> Unit) {
     var reporting by remember { mutableStateOf(vm.prefs.reporting) }
     var notifications by remember { mutableStateOf(vm.prefs.notifications) }
     val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.setNotifications(notifications) }
@@ -81,6 +81,14 @@ fun SettingsScreen(vm: NoodleViewModel, back: () -> Unit) {
                 enabled = reporting,
             ) { Text("Allow location (home / away)") }
             OutlinedButton(onClick = { vm.reportNow() }, enabled = reporting) { Text("Report now") }
+
+            Text("Devices", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+            Column {
+                Text("Set up a new Shelly")
+                Text("Puts a Shelly that is not on your Wi-Fi yet on it, using this phone's Wi-Fi, and adds it to Noodle.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            OutlinedButton(onClick = setupShelly) { Text("Set up a new Shelly") }
 
             OutlinedButton(onClick = { vm.logout() }) { Text("Log out") }
         }

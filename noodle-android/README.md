@@ -4,6 +4,7 @@ Native client for the noodle/Noodle server on the Pi. Replaces the Home Assistan
 
 - Live device list by room over `/api/ws` (no polling); toggle lights/switches, dim, change the thermostat target.
 - The phone shows up in Noodle as a device (`phone:<id>`): battery, charging and a **Home** presence sensor (within 150 m of `NOODLE_LAT`/`NOODLE_LON`). Use it in flows like any sensor.
+- **Set up a new Shelly** (Settings, or the Shelly add screen in the app): puts a Shelly that is not on the Wi-Fi yet (Gen1 included) on it with the phone's own Wi-Fi, then adds it to the hub. Nearby networks are only listed while that screen is open; the Wi-Fi password goes to the Shelly and is not stored. Needs *Nearby devices* (Android 13+) or *Location* (Android 11–12).
 - Login trades the password once for a long-lived token (`POST /api/auth/app`); the password is not stored.
 
 ## Build

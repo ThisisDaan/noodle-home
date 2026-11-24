@@ -84,6 +84,11 @@
 	const local = typeof location !== 'undefined' && ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
 	const only5 = (f: Found, name: string) => !!f.wifi?.only5?.includes(name);
 
+	// Inside the Android app a new Shelly can also be set up with the phone's own Wi-Fi (a web page cannot switch it).
+	type AppBridge = { NoodleApp?: { setupShelly?: () => void } };
+	const phoneSetup = $derived(id === 'shelly' && typeof window !== 'undefined' && !!(window as unknown as AppBridge).NoodleApp?.setupShelly);
+	const setupWithPhone = () => (window as unknown as AppBridge).NoodleApp?.setupShelly?.();
+
 	async function connect(key: string) {
 		await add(key, { wifi_ssid: wifiSsid, wifi_password: wifiPassword });
 		if (!error) wifiFor = null; // on failure the form stays open, to try again
@@ -171,6 +176,13 @@
 			</button>
 		{/if}
 	</div>
+
+	{#if phoneSetup}
+		<div class="bg-base-200 rounded-box flex items-center gap-3 p-3 text-sm">
+			<span class="grow">New Shelly, not on your Wi-Fi yet? This phone can put it there.</span>
+			<button type="button" class="btn btn-sm" onclick={setupWithPhone}><Icon name="wifi" class="size-4" />Set up a new Shelly</button>
+		</div>
+	{/if}
 
 	{#if searching && item.search_hint}
 		<p class="bg-base-200 rounded-box p-3 text-sm">{item.search_hint}</p>
